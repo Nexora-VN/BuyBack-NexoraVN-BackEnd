@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: buyback-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: buyback
+      POSTGRES_USER: buyback
+      POSTGRES_PASSWORD: buyback
+    ports:
+      - '${POSTGRES_PORT:-5433}:5432'
+    volumes:
+      - buyback-postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U buyback -d buyback']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  buyback-postgres-data:

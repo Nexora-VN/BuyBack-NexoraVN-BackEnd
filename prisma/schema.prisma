@@ -1,0 +1,131 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["aff"]
+}
+
+// ==== START USERS ====
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+
+  @@map("user_role")
+  @@schema("aff")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  DELETED
+
+  @@map("user_status")
+  @@schema("aff")
+}
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+
+  // User Information
+  email        String  @unique @db.VarChar(320)
+  phoneNumber  String  @unique @map("phone_number") @db.VarChar(20)
+  passwordHash String  @map("password_hash")
+  displayName  String? @map("display_name") @db.VarChar(120)
+  fullName     String? @map("full_name") @db.VarChar(50)
+
+  // Role - Status
+  role   UserRole   @default(USER)
+  status UserStatus @default(ACTIVE)
+
+  // Base Properties
+  deleteAt DateTime? @map("delete_at") @db.Timestamptz(3)
+  deleteBy String?   @map("delete_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdBy String?  @map("created_by") @db.Uuid
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  // Relationship
+  // 1 User -> N UserBank
+  banks    UserBank[]
+  sessions AuthSession[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("users")
+  @@schema("aff")
+}
+
+// ==== END USERS ====
+
+// ==== START AUTH_SESSION ====
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  refreshTokenHash String    @map("refresh_token_hash")
+  ipAddress        String?   @map("ip_address") @db.VarChar(64)
+  userAgent        String?   @map("user_agent")
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+  @@schema("aff")
+}
+
+// ==== END AUTH_SESSION ====
+
+// ==== START USER_BANK ====
+enum UserBankStatus {
+  PENDING
+  APPROVED
+  REJECT
+
+  @@map("user_bank_status")
+  @@schema("aff")
+}
+
+model UserBank {
+  id String @id @default(uuid()) @db.Uuid
+
+  //Bank infor
+  bankCode   String         @map("bank_code") @db.VarChar(20)
+  bankName   String?        @map("bank_name") @db.VarChar(100)
+  bankBranch String?        @map("bank_branch") @db.VarChar(100)
+  status     UserBankStatus @default(PENDING)
+
+  // Base Properties
+  deleteAt DateTime? @map("delete_at") @db.Timestamptz(3)
+  deleteBy String?   @map("delete_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdBy String?  @map("created_by") @db.Uuid
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  // FK
+  userId String @map("user_id") @db.Uuid
+
+  // Relation N user_bank ->1 user
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("user_bank")
+  @@schema("aff")
+}
+
+// ==== END USER_BANK ====

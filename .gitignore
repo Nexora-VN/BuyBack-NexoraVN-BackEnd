@@ -22,3 +22,10 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+
+# Tooling and generated artifacts
+/coverage
+/.eslintcache
+*.tsbuildinfo
+/src/generated/prisma
+.DS_Store
