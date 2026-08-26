@@ -28,12 +28,7 @@ export class GenerateAffiliateService {
     }
 
     // Generate link
-    const resp = await this.generateLinkBySystem(shopeeUrl, userId, 'web');
-    console.log('🚀 ~ GenerateAffiliateService ~ generateAffiliateLinkBySystem ~ resp:', resp);
-    return {
-      link: resp.link,
-      code: null,
-    };
+    return this.generateLinkBySystem(shopeeUrl, userId, 'web');
   }
 
   // ==== START UNTILS FUNCTIONAL ====
