@@ -6,6 +6,7 @@ import { AffiliateLinkStatus, ConvertOrigin, UserStatus } from '../../../common/
 // import { generateLinkBySystem } from '../utils/generate-link.js';
 import { randomUUID } from 'node:crypto';
 import { ERROR_CODE, type ErrorCode } from '../../../common/domain/error-code.js';
+import { makeCleanShortLink } from '../utils/clean-short-link.js';
 
 @Injectable()
 export class GenerateAffiliateService {
@@ -26,7 +27,6 @@ export class GenerateAffiliateService {
         code: user.code,
       };
     }
-
     // Generate link
     return this.generateLinkBySystem(shopeeUrl, userId, 'web');
   }
@@ -54,7 +54,7 @@ export class GenerateAffiliateService {
 
     try {
       // Step 1 + 2 + 3: Lấy link đầy đủ
-      const cleanLink = await this.makeCleanShortLink(url);
+      const cleanLink = await makeCleanShortLink(url);
       console.log(cleanLink);
 
       // Step 4: Ghép endpoint
@@ -105,33 +105,6 @@ export class GenerateAffiliateService {
         code: ERROR_CODE.AFFILIATE_CONVERT_FAILED,
       };
     }
-  };
-
-  makeCleanShortLink = async (url: string): Promise<string> => {
-    // Lấy full link
-    const response = await fetch(url, {
-      method: 'HEAD',
-      redirect: 'manual',
-    });
-
-    const location = response.headers.get('location');
-
-    if (!location) {
-      throw new Error('Short link không trả redirect URL');
-    }
-
-    const resolvedUrl = new URL(location);
-
-    const allowed =
-      resolvedUrl.hostname === 'shopee.vn' || resolvedUrl.hostname.endsWith('.shopee.vn');
-
-    if (!allowed) {
-      throw new Error('Redirect ra ngoài domain Shopee');
-    }
-
-    const cleanUrl = `${resolvedUrl.protocol}//${resolvedUrl.hostname}${resolvedUrl.pathname}`;
-
-    return cleanUrl;
   };
   // ==== END UNTILS FUNCTIONAL ====
 }
