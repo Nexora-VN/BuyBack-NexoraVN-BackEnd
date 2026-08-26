@@ -26,6 +26,7 @@ export interface AffiliateLinkRecord {
 }
 
 export interface CreateAffiliateLinkData {
+  id?: string;
   userId: string;
   productId: string;
   originLink: string;

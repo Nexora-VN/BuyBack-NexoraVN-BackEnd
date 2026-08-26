@@ -4,9 +4,11 @@ import { AffiliateController } from './controllers/affiliate.controller.js';
 import { PrismaAffiliateRepository } from './repositories/prisma-affiliate.repository.js';
 import { AffiliateRepository } from './repositories/affiliate.repository.js';
 import { AffiliateService } from './services/affiliate.service.js';
+import { GenerateAffiliateService } from './services/generate-affiiliate.service.js';
+import { UsersModule } from '../users/users.module.js';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, UsersModule],
   controllers: [AffiliateController],
   providers: [
     AffiliateService,
@@ -15,6 +17,7 @@ import { AffiliateService } from './services/affiliate.service.js';
       provide: AffiliateRepository,
       useExisting: PrismaAffiliateRepository,
     },
+    GenerateAffiliateService,
   ],
   exports: [AffiliateService],
 })

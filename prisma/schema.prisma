@@ -153,10 +153,10 @@ model AffiliateLink {
   id String @id @default(uuid()) @db.Uuid
 
   // SUB ID for validate USERID
-  subId1 String? @map("sub_id_1") @db.VarChar(50) // User tracking key (userId)
+  subId1 String? @map("sub_id_1") @db.VarChar(50) // User id
   subId2 String? @map("sub_id_2") @db.VarChar(50) // Affliate Link Id 
   subId3 String? @map("sub_id_3") @db.VarChar(50) // Channel (web, android, ios)
-  subId4 String? @map("sub_id_4") @db.VarChar(50) // TODO: WHEN SCALE
+  subId4 String? @map("sub_id_4") @db.VarChar(50) // Tracking ID (`bb_{nanoId(20)}`)
   subId5 String? @map("sub_id_5") @db.VarChar(50) // TODO: WHEN SCALE
 
   // ORIGIN LINK: SHARE FROM SHOPEE

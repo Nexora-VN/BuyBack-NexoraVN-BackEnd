@@ -5,8 +5,9 @@ import type { CreateUserDto } from '../dto/create-user.dto.js';
 import type { ListUsersQueryDto } from '../dto/list-users-query.dto.js';
 import type { UpdateUserDto } from '../dto/update-user.dto.js';
 import type { UserListResponseDto, UserResponseDto } from '../dto/user-response.dto.js';
-import type { UserRecord } from '../repositories/users.repository.js';
+import type { FindUserStatus, UserRecord } from '../repositories/users.repository.js';
 import { UsersRepository } from '../repositories/users.repository.js';
+import { ERROR_CODE } from '../../../common/domain/error-code.js';
 
 @Injectable()
 export class UsersService {
@@ -83,6 +84,50 @@ export class UsersService {
   async delete(id: string, actorId: string): Promise<void> {
     await this.getUser(id);
     await this.usersRepository.softDelete(id, actorId);
+  }
+
+  async getUserStatusById(id: string): Promise<FindUserStatus> {
+    const user = await this.getUser(id);
+
+    if (!user || user.id === null) {
+      return {
+        id: null,
+        status: null,
+        message: 'Người dùng không tồn tại',
+        code: ERROR_CODE.USER_NOT_FOUND,
+      };
+    }
+
+    switch (user.status) {
+      case UserStatus.DELETED:
+        return {
+          id: user.id,
+          status: user.status,
+          message: 'Tài khoản đã bị hủy kích hoạt, vui lòng liên hệ quản trị viên',
+          code: ERROR_CODE.USER_DELETED,
+        };
+      case UserStatus.DISABLED:
+        return {
+          id: user.id,
+          status: user.status,
+          message: 'Tài khoản đã bị khóa, vui lòng liên hệ quản trị viên',
+          code: ERROR_CODE.USER_DISABLED,
+        };
+      case UserStatus.ACTIVE:
+        return {
+          id: user.id,
+          status: user.status,
+          message: 'Người dùng đang hoạt động',
+          code: null,
+        };
+      default:
+        return {
+          id: null,
+          status: null,
+          message: '',
+          code: null,
+        };
+    }
   }
 
   private async getUser(id: string): Promise<UserRecord> {

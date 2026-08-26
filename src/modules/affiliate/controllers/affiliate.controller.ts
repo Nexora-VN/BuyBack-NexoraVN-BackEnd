@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -28,7 +29,7 @@ import { Roles } from '../../auth/decorators/roles.decorator.js';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../../auth/guards/roles.guard.js';
 import type { AuthenticatedUser } from '../../auth/interfaces/authenticated-user.js';
-import { CreateAffiliateLinkDto } from '../dto/create-affiliate-link.dto.js';
+// import { CreateAffiliateLinkDto } from '../dto/create-affiliate-link.dto.js';
 import { ListAffiliateLinksQueryDto } from '../dto/list-affiliate-query.dto.js';
 import { UpdateAffiliateLinkDto } from '../dto/update-affiliate-link.dto.js';
 import {
@@ -36,6 +37,8 @@ import {
   AffiliateResponseDto,
 } from '../dto/affiliate-response.dto.js';
 import { AffiliateService } from '../services/affiliate.service.js';
+import { GenerateAffiliateService } from '../services/generate-affiiliate.service.js';
+import { ErrorCode } from '../../../common/domain/error-code.js';
 
 @ApiTags('affiliate')
 @ApiBearerAuth('access-token')
@@ -45,16 +48,41 @@ import { AffiliateService } from '../services/affiliate.service.js';
 @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
 @Controller('affiliate')
 export class AffiliateController {
-  constructor(private readonly affiliateService: AffiliateService) {}
+  constructor(
+    private readonly affiliateService: AffiliateService,
+    private readonly generateAffiliateService: GenerateAffiliateService,
+  ) {}
+
+  // @Post()
+  // @ApiOperation({ summary: 'Create an affiliate link' })
+  // @ApiCreatedResponse({ type: AffiliateResponseDto })
+  // create(
+  //   @Body() input: CreateAffiliateLinkDto,
+  //   @CurrentUser() actor: AuthenticatedUser,
+  // ): Promise<AffiliateResponseDto> {
+  //   return this.affiliateService.create(input, actor.id);
+  // }
 
   @Post()
   @ApiOperation({ summary: 'Create an affiliate link' })
-  @ApiCreatedResponse({ type: AffiliateResponseDto })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          example: 'https://vn.shp.ee/NWRHsAhy',
+        },
+      },
+      required: ['url'],
+    },
+  })
+  @ApiCreatedResponse()
   create(
-    @Body() input: CreateAffiliateLinkDto,
+    @Body() input: { url: string },
     @CurrentUser() actor: AuthenticatedUser,
-  ): Promise<AffiliateResponseDto> {
-    return this.affiliateService.create(input, actor.id);
+  ): Promise<{ link: string | null; code: ErrorCode | null }> {
+    return this.generateAffiliateService.generateAffiliateLinkBySystem(input.url, actor.id);
   }
 
   @Get()

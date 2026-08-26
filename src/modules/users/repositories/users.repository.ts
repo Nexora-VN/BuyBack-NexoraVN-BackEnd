@@ -1,4 +1,5 @@
 import type { UserRole, UserStatus } from '../../../common/domain/enums.js';
+import type { ErrorCode } from '../../../common/domain/error-code.js';
 
 export interface UserRecord {
   id: string;
@@ -49,6 +50,13 @@ export interface FindUsersOptions {
 export interface FindUsersResult {
   items: UserRecord[];
   total: number;
+}
+
+export interface FindUserStatus {
+  id: string | null;
+  status: UserStatus | null;
+  message: string;
+  code: ErrorCode | null;
 }
 
 export abstract class UsersRepository {
