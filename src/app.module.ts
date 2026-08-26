@@ -9,6 +9,7 @@ import { PrismaModule } from './infrastructure/database/prisma/prisma.module.js'
 import { BackofficeModule } from './modules/backoffice/backoffice.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { UsersModule } from './modules/users/users.module.js';
+import { AffiliateModule } from './modules/affiliate/affiliate.module.js';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { UsersModule } from './modules/users/users.module.js';
     AuthModule,
     UsersModule,
     BackofficeModule,
+    AffiliateModule,
   ],
   providers: [
     {

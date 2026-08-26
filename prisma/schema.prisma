@@ -54,8 +54,10 @@ model User {
 
   // Relationship
   // 1 User -> N UserBank
-  banks    UserBank[]
-  sessions AuthSession[]
+  banks          UserBank[]
+  sessions       AuthSession[]
+  // 1 User -> N AffiliateLink
+  affiliateLinks AffiliateLink[]
 
   @@index([status])
   @@index([createdAt])
@@ -118,9 +120,8 @@ model UserBank {
 
   // FK
   userId String @map("user_id") @db.Uuid
-
   // Relation N user_bank ->1 user
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([createdAt])
@@ -129,3 +130,173 @@ model UserBank {
 }
 
 // ==== END USER_BANK ====
+
+// ==== START AFFILATE LINK ====
+enum ConvertOrigin {
+  SYSTEM
+  PARTY
+
+  @@map("convert_origin")
+  @@schema("aff")
+}
+
+enum AffiliateLinkStatus {
+  WORKING
+  DELETED
+  EXPIRED
+
+  @@map("affiliate_link_status")
+  @@schema("aff")
+}
+
+model AffiliateLink {
+  id String @id @default(uuid()) @db.Uuid
+
+  // SUB ID for validate USERID
+  subId1 String? @map("sub_id_1") @db.VarChar(50) // User tracking key (userId)
+  subId2 String? @map("sub_id_2") @db.VarChar(50) // Affliate Link Id 
+  subId3 String? @map("sub_id_3") @db.VarChar(50) // Channel (web, android, ios)
+  subId4 String? @map("sub_id_4") @db.VarChar(50) // TODO: WHEN SCALE
+  subId5 String? @map("sub_id_5") @db.VarChar(50) // TODO: WHEN SCALE
+
+  // ORIGIN LINK: SHARE FROM SHOPEE
+  originLink String @map("origin_link") @db.VarChar()
+  // CLEAN LINK: After convert 
+  // (exp: https://vn.shp.ee/NWRHsAhy -> https://shopee.vn/product/46182105/26771994719 -> ...105 is shopId, ...719 is productId)
+  cleanLink  String @map("clean_link") @db.VarChar()
+
+  // Link Convert Origin
+  convertOrigin ConvertOrigin @default(SYSTEM) @map("convert_origin")
+
+  // If Link convert by SYSTEM
+  fullLinkSystem String? @map("full_link_system") @db.VarChar()
+
+  // If Link convert by 3 PARTY 
+  shortLink String? @map("short_link") @db.VarChar()
+  longLink  String? @map("long_link") @db.VarChar()
+  failCode  Int?    @map("fail_code") @db.Integer
+
+  affiliateLinkStatus AffiliateLinkStatus? @map("affiliate_link_status")
+
+  // Base Properties
+  deleteAt DateTime? @map("delete_at") @db.Timestamptz(3)
+  deleteBy String?   @map("delete_by") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdBy String?  @map("created_by") @db.Uuid
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  // FK 
+  userId    String  @map("user_id") @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  // N AffiliateLink -> 1 User
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // N AffiliateLink -> 1 Product
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([id, originLink])
+  @@map("affiliate_link")
+  @@schema("aff")
+}
+
+// ==== END AFFILATE LINK ====
+
+// ==== START PRODUCT ====
+model Product {
+  id String @id @db.Uuid
+
+  // ==== Start Product Information ====
+  itemId BigInt @map("item_id") @db.BigInt
+  shopId BigInt @map("shop_id") @db.BigInt
+
+  productName String @map("product_name") @db.VarChar()
+  shopName    String @map("shop_name") @db.VarChar()
+
+  originLink String @map("origin_link") @db.VarChar()
+  price      Float  @db.DoublePrecision
+  sales      Float  @db.DoublePrecision
+
+  imageUrl    String @map("image_url") @db.VarChar()
+  productLink String @map("product_link") @db.VarChar()
+  rating      String @db.VarChar(10)
+
+  // ====> Start of COMMISSION 
+  // WARNING: COMMISSION ==> CORE
+  hasSellerCommission Boolean @map("has_seller_commission") @db.Boolean
+  hasShopeeCommission Boolean @map("has_shopee_commission") @db.Boolean
+
+  commission     Float @db.DoublePrecision
+  sellerComFinal Float @map("seller_com_final") @db.DoublePrecision
+  shoppeComFinal Float @map("shopee_com_final") @db.DoublePrecision
+
+  sellerRate        Float @map("seller_rate") @db.DoublePrecision
+  shopeeRate        Float @map("shopee_rate") @db.DoublePrecision
+  sellerRatePercent Float @map("seller_rate_percent") @db.DoublePrecision
+  shopeeRatePercent Float @map("shopee_rate_percent") @db.DoublePrecision
+  totalRatePercent  Float @map("total_rate_percent") @db.DoublePrecision
+  // <==== end of COMMISSION
+
+  isExtra      Boolean @map("is_extra") @db.Boolean
+  isCapped     Boolean @map("is_capped") @db.Boolean
+  isLimitCap   Boolean @map("is_limit_cap") @db.Boolean
+  cap          BigInt  @db.BigInt
+  capRow       BigInt  @map("cap_row") @db.BigInt
+  capAfterRate BigInt  @map("cap_after_rate") @db.BigInt
+
+  lastUpdate DateTime @map("last_update") @db.Timestamptz(3)
+
+  // Relationship
+  priceStats         PriceStats?
+  latestPriceHistory LatestPriceHistory?
+  affilateLinks      AffiliateLink[]
+
+  // ==== End Product Information ====
+
+  @@map("product")
+  @@schema("aff")
+}
+
+model PriceStats {
+  id String @id @db.Uuid
+
+  currentPrice Float @map("current_price") @db.DoublePrecision
+  minPrice     Float @map("min_price") @db.DoublePrecision
+  maxPrice     Float @map("max_price") @db.DoublePrecision
+  avgPrice     Float @map("avg_price") @db.DoublePrecision
+
+  priceChange7d  Float    @map("price_change_7d") @db.DoublePrecision
+  priceChange30d Float    @map("price_change_30d") @db.DoublePrecision
+  lastPriceUpate DateTime @map("last_price_update") @db.Timestamptz(3)
+
+  lowestPriceDate  DateTime @map("lowest_price_date") @db.Timestamptz(3)
+  highestPriceDate DateTime @map("highest_price_date") @db.Timestamptz(3)
+
+  productId String  @unique @db.Uuid
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("price_stats")
+  @@schema("aff")
+}
+
+model LatestPriceHistory {
+  id String @id @db.Uuid
+
+  price           Float @db.DoublePrecision
+  originalPrice   Float @map("original_price") @db.DoublePrecision
+  discountPercent Float @map("discount_percent") @db.DoublePrecision
+
+  currency  String  @default("VND") @db.VarChar(10)
+  flashSale Boolean @db.Boolean
+
+  recordedTime DateTime @map("recorded_time") @db.Timestamptz(3)
+
+  productId String  @unique @db.Uuid
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("latest_price_history")
+  @@schema("aff")
+}
+
+// ==== END PRODUCT ====
