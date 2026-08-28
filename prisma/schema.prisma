@@ -157,7 +157,7 @@ model AffiliateLink {
   subId2 String? @map("sub_id_2") @db.VarChar(50) // Affliate Link Id 
   subId3 String? @map("sub_id_3") @db.VarChar(50) // Channel (web, android, ios)
   subId4 String? @map("sub_id_4") @db.VarChar(50) // Tracking ID (`bb_{nanoId(20)}`)
-  subId5 String? @map("sub_id_5") @db.VarChar(50) // TODO: WHEN SCALE
+  subId5 String? @map("sub_id_5") @db.VarChar(50) // Product ID
 
   // ORIGIN LINK: SHARE FROM SHOPEE
   originLink String @map("origin_link") @db.VarChar()

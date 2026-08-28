@@ -10,6 +10,7 @@ import { BackofficeModule } from './modules/backoffice/backoffice.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { AffiliateModule } from './modules/affiliate/affiliate.module.js';
+import { ProductModule } from './modules/product/product.module.js';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { AffiliateModule } from './modules/affiliate/affiliate.module.js';
     UsersModule,
     BackofficeModule,
     AffiliateModule,
+    ProductModule,
   ],
   providers: [
     {

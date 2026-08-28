@@ -3,16 +3,19 @@ import { AffiliateRepository } from '../repositories/affiliate.repository.js';
 import { FindUserStatus } from '../../users/repositories/users.repository.js';
 import { UsersService } from '../../users/services/users.service.js';
 import { AffiliateLinkStatus, ConvertOrigin, UserStatus } from '../../../common/domain/enums.js';
-// import { generateLinkBySystem } from '../utils/generate-link.js';
 import { randomUUID } from 'node:crypto';
 import { ERROR_CODE, type ErrorCode } from '../../../common/domain/error-code.js';
-import { makeCleanShortLink } from '../utils/clean-short-link.js';
+import { makeCleanShortLink, parseShopeeProductUrl } from '../utils/clean-short-link.js';
+import { getProductByAffProductId } from '../../product/utils/get-product-by-aff-id.js';
+import { mapProviderProductToCreateDto } from '../../product/mappers/product-provider.mapper.js';
+import { ProductService } from '../../product/services/product.service.js';
 
 @Injectable()
 export class GenerateAffiliateService {
   constructor(
     private readonly affiliateRepository: AffiliateRepository,
     private readonly usersService: UsersService,
+    private readonly productService: ProductService,
   ) {}
 
   async generateAffiliateLinkBySystem(
@@ -31,7 +34,7 @@ export class GenerateAffiliateService {
     return this.generateLinkBySystem(shopeeUrl, userId, 'web');
   }
 
-  // ==== START UNTILS FUNCTIONAL ====
+  // ==== START MAIN FUNCTIONAL ====
   generateLinkBySystem = async (
     url: string,
     userId: string,
@@ -49,6 +52,7 @@ export class GenerateAffiliateService {
      * Step 1: Mở rộng link để lấy link đầy đủ
      * Step 2: Loại bỏ các tiền tố, chỉ giữ https://{domain}/{shop_id}/{product_id}
      * Step 3: Encode Url sạch
+     * Step 3.5: Lấy thông tin sản phẩm -> Check Exists (If yes: continue; If no: Save DB)
      * Step 4: Ghép endpoint an_redir, origin_link, affiliate_id và sub_id.
      */
 
@@ -57,14 +61,41 @@ export class GenerateAffiliateService {
       const cleanLink = await makeCleanShortLink(url);
       console.log(cleanLink);
 
+      // Step 3.5: Get Product Infor
+      const { shopId, productId } = parseShopeeProductUrl(cleanLink);
+      console.log('shopId - productId ', `${shopId} - ${productId}`);
+      /**
+       * Find EXIST First
+       * Yes: Continue
+       * No: Fetch Data to getProduct
+       */
+      const existingProduct = await this.productService.findByItemId(productId);
+      let savedProductId: string;
+
+      // NO: FETCH DATA + SAVE DB
+      if (!existingProduct) {
+        // FIND BY PARTY API
+        const productResp = await getProductByAffProductId(productId);
+        // CONVERT MAPPER
+        const productInput = mapProviderProductToCreateDto(productResp.productInfo);
+
+        // SAVE INTO DB
+        const savedProduct = await this.productService.create(productInput);
+        savedProductId = savedProduct.id;
+      } else {
+        // YES: Get data
+        savedProductId = existingProduct.id;
+      }
+
       // Step 4: Ghép endpoint
       const affiliateLinkId = randomUUID();
 
-      const subId1 = userId.replaceAll('-', '');
-      const subId2 = `${affiliateLinkId.replaceAll('-', '')}`;
-      const subId3 = channel;
-      const subId4 = `bb_${randomUUID().replaceAll('-', '')}`;
-      const subId5 = '';
+      // Make subIDS
+      const subId1 = userId.replaceAll('-', ''); // userID
+      const subId2 = `${affiliateLinkId.replaceAll('-', '')}`; // affiliateId
+      const subId3 = channel; // channel
+      const subId4 = `bb_${randomUUID().replaceAll('-', '')}`; // trackingId
+      const subId5 = `${savedProductId.replaceAll('-', '')}`; // productId
 
       const subIds = [subId1, subId2, subId3, subId4, subId5].join('-');
 
@@ -74,12 +105,13 @@ export class GenerateAffiliateService {
         sub_id: subIds,
       });
 
+      // Generate + save into DB Affiliate Link
       const generatedLink = `${REDIRECT_DOMAIN}?${params.toString()}`;
 
       await this.affiliateRepository.create({
         id: affiliateLinkId,
         userId,
-        productId: '',
+        productId: savedProductId,
         originLink: url,
         cleanLink,
         subId1,
@@ -106,5 +138,5 @@ export class GenerateAffiliateService {
       };
     }
   };
-  // ==== END UNTILS FUNCTIONAL ====
+  // ==== END MAIN FUNCTIONAL ====
 }

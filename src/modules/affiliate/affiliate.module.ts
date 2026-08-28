@@ -6,10 +6,12 @@ import { AffiliateRepository } from './repositories/affiliate.repository.js';
 import { AffiliateService } from './services/affiliate.service.js';
 import { GenerateAffiliateService } from './services/generate-affiiliate.service.js';
 import { UsersModule } from '../users/users.module.js';
+import { GenerateAffiliateController } from './controllers/generate-affiliate.controller.js';
+import { ProductModule } from '../product/product.module.js';
 
 @Module({
-  imports: [AuthModule, UsersModule],
-  controllers: [AffiliateController],
+  imports: [AuthModule, UsersModule, ProductModule],
+  controllers: [AffiliateController, GenerateAffiliateController],
   providers: [
     AffiliateService,
     PrismaAffiliateRepository,

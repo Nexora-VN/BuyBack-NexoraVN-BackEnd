@@ -7,14 +7,11 @@ import {
   HttpStatus,
   Param,
   Patch,
-  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiBody,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -38,7 +35,6 @@ import {
 } from '../dto/affiliate-response.dto.js';
 import { AffiliateService } from '../services/affiliate.service.js';
 import { GenerateAffiliateService } from '../services/generate-affiiliate.service.js';
-import { ErrorCode } from '../../../common/domain/error-code.js';
 
 @ApiTags('affiliate')
 @ApiBearerAuth('access-token')
@@ -62,28 +58,6 @@ export class AffiliateController {
   // ): Promise<AffiliateResponseDto> {
   //   return this.affiliateService.create(input, actor.id);
   // }
-
-  @Post()
-  @ApiOperation({ summary: 'Create an affiliate link' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        url: {
-          type: 'string',
-          example: 'https://vn.shp.ee/NWRHsAhy',
-        },
-      },
-      required: ['url'],
-    },
-  })
-  @ApiCreatedResponse()
-  create(
-    @Body() input: { url: string },
-    @CurrentUser() actor: AuthenticatedUser,
-  ): Promise<{ link: string | null; code: ErrorCode | null }> {
-    return this.generateAffiliateService.generateAffiliateLinkBySystem(input.url, actor.id);
-  }
 
   @Get()
   @ApiOperation({ summary: 'List affiliate links with search filters and pagination' })
