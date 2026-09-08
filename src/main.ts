@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
@@ -33,6 +34,9 @@ export async function bootstrap(): Promise<NestFastifyApplication> {
 
   app.enableCors({ origin: origins, credentials: true });
   await app.register(helmet);
+  await app.register(multipart, {
+    limits: { fileSize: 100 * 1024 * 1024, files: 1 },
+  });
 
   if (config.get<boolean>('SWAGGER_ENABLED', true)) {
     const swaggerConfig = new DocumentBuilder()

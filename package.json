@@ -27,8 +27,11 @@
     "migrate:test": "prisma format && prisma validate && prisma migrate dev --create-only && prisma migrate deploy && prisma generate"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1127.0",
+    "@aws-sdk/s3-request-presigner": "^3.1127.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/helmet": "^13.1.1",
+    "@fastify/multipart": "^10.1.1",
     "@fastify/static": "^10.1.3",
     "@nestjs/common": "^11.2.1",
     "@nestjs/config": "^4.0.4",
@@ -42,9 +45,12 @@
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "argon2": "^0.45.1",
+    "bullmq": "^6.3.4",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "fast-xml-parser": "^5.11.1",
     "fastify": "5.11.3",
+    "ioredis": "^6.0.0",
     "lossless-json": "^4.3.1",
     "nanoid": "^6.0.1",
     "nestjs-pino": "^4.6.1",
@@ -52,8 +58,10 @@
     "passport-jwt": "^4.0.1",
     "pg": "^8.23.0",
     "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "unzipper": "^0.12.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -64,6 +72,7 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
+    "@types/unzipper": "^0.10.11",
     "eslint": "^10.0.1",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.11.0",

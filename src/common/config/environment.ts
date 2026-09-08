@@ -19,6 +19,14 @@ export const environmentSchema = z
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
+    REDIS_HOST: z.string().default('127.0.0.1'),
+    REDIS_PORT: z.coerce.number().int().positive().default(6379),
+    MINIO_ENDPOINT: z.string().default('127.0.0.1'),
+    MINIO_PORT: z.coerce.number().int().positive().default(9000),
+    MINIO_ACCESS_KEY: z.string().default('minioadmin'),
+    MINIO_SECRET_KEY: z.string().default('minioadmin'),
+    MINIO_BUCKET: z.string().default('notebook-lms'),
+    MINIO_PUBLIC_URL: z.url().default('http://127.0.0.1:9000'),
   })
   .superRefine((environment, context) => {
     if (environment.JWT_ACCESS_SECRET === environment.JWT_REFRESH_SECRET) {

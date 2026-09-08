@@ -11,6 +11,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { AffiliateModule } from './modules/affiliate/affiliate.module.js';
 import { ProductModule } from './modules/product/product.module.js';
+import { NotebookImportModule } from './modules/notebook-import/notebook-import.module.js';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ProductModule } from './modules/product/product.module.js';
     BackofficeModule,
     AffiliateModule,
     ProductModule,
+    NotebookImportModule,
   ],
   providers: [
     {

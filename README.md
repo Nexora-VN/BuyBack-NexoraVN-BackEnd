@@ -103,3 +103,16 @@ Add these only after their business rules and provider contracts are confirmed.
 ## Database namespace
 
 The current database uses `aff.users`, `aff.user_bank`, and `aff.auth_sessions`. Future tables will also use the PostgreSQL schema `aff`. Keep `?schema=aff` in `DATABASE_URL` when deploying with Prisma.
+
+## SMART Notebook LMS POC
+
+Start the local dependencies before the API:
+
+```bash
+docker compose up -d postgres redis minio minio-init
+npm run prisma:migrate:deploy
+npm run prisma:generate
+npm run dev
+```
+
+The API starts the BullMQ notebook worker in the same process for the POC. Log in as an `ADMIN` or `SUPER_ADMIN` in the Next.js app, open **Notebook LMS**, and upload a `.notebook` file. Redis manages jobs; MinIO stores source/extracted content and publishes sanitized SVG/image/audio assets for the public learner player.
