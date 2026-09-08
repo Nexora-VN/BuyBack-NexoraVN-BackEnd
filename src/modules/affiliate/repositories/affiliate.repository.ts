@@ -23,9 +23,11 @@ export interface AffiliateLinkRecord {
   updatedBy: string | null;
   userId: string;
   productId: string;
+  affiliateIdSnapshot?: string | null;
 }
 
 export interface CreateAffiliateLinkData {
+  affiliateIdSnapshot?: string;
   id?: string;
   userId: string;
   productId: string;

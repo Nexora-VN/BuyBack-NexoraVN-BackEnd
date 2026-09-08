@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AffiliateRepository } from '../repositories/affiliate.repository.js';
 import { FindUserStatus } from '../../users/repositories/users.repository.js';
 import { UsersService } from '../../users/services/users.service.js';
@@ -16,6 +17,7 @@ export class GenerateAffiliateService {
     private readonly affiliateRepository: AffiliateRepository,
     private readonly usersService: UsersService,
     private readonly productService: ProductService,
+    private readonly configService: ConfigService,
   ) {}
 
   async generateAffiliateLinkBySystem(
@@ -41,7 +43,7 @@ export class GenerateAffiliateService {
     channel?: 'web' | 'ios' | 'android',
   ): Promise<{ link: string | null; code: ErrorCode | null }> => {
     const REDIRECT_DOMAIN = 'https://s.shopee.vn/an_redir';
-    const AFFILIATE_ID = '17303170528';
+    const AFFILIATE_ID = this.configService.getOrThrow<string>('SHOPEE_AFFILIATE_ID');
     /**
      * GENERATE URL BY SYSTEM FLOW
      * CÔNG THỨC CHUNG:
@@ -59,11 +61,9 @@ export class GenerateAffiliateService {
     try {
       // Step 1 + 2 + 3: Lấy link đầy đủ
       const cleanLink = await makeCleanShortLink(url);
-      console.log(cleanLink);
 
       // Step 3.5: Get Product Infor
-      const { shopId, productId } = parseShopeeProductUrl(cleanLink);
-      console.log('shopId - productId ', `${shopId} - ${productId}`);
+      const { productId } = parseShopeeProductUrl(cleanLink);
       /**
        * Find EXIST First
        * Yes: Continue
@@ -110,6 +110,7 @@ export class GenerateAffiliateService {
 
       await this.affiliateRepository.create({
         id: affiliateLinkId,
+        affiliateIdSnapshot: AFFILIATE_ID,
         userId,
         productId: savedProductId,
         originLink: url,
@@ -130,8 +131,7 @@ export class GenerateAffiliateService {
         link: generatedLink,
         code: null,
       };
-    } catch (error) {
-      console.log(error);
+    } catch {
       return {
         link: null,
         code: ERROR_CODE.AFFILIATE_CONVERT_FAILED,

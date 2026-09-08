@@ -20,7 +20,7 @@ export class ProductResponseDto {
   originLink!: string;
 
   @ApiProperty()
-  price!: number;
+  price!: string;
 
   @ApiProperty()
   sales!: number;
@@ -41,13 +41,13 @@ export class ProductResponseDto {
   hasShopeeCommission!: boolean;
 
   @ApiProperty()
-  commission!: number;
+  commission!: string;
 
   @ApiProperty()
-  sellerComFinal!: number;
+  sellerComFinal!: string;
 
   @ApiProperty()
-  shoppeComFinal!: number;
+  shoppeComFinal!: string;
 
   @ApiProperty()
   sellerRate!: number;

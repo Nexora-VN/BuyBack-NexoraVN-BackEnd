@@ -58,6 +58,9 @@ model User {
   sessions       AuthSession[]
   // 1 User -> N AffiliateLink
   affiliateLinks AffiliateLink[]
+  wallet Wallet?
+  commissions Commission[]
+  withdrawals Withdrawal[]
 
   @@index([status])
   @@index([createdAt])
@@ -93,7 +96,7 @@ model AuthSession {
 enum UserBankStatus {
   PENDING
   APPROVED
-  REJECT
+  REJECTED @map("REJECT")
 
   @@map("user_bank_status")
   @@schema("aff")
@@ -107,6 +110,17 @@ model UserBank {
   bankName   String?        @map("bank_name") @db.VarChar(100)
   bankBranch String?        @map("bank_branch") @db.VarChar(100)
   status     UserBankStatus @default(PENDING)
+  accountHolder String? @map("account_holder")
+  accountCiphertext String? @map("account_ciphertext")
+  accountIv String? @map("account_iv")
+  accountTag String? @map("account_tag")
+  lastFour String? @map("last_four") @db.VarChar(4)
+  version Int @default(1)
+  previousId String? @map("previous_id") @db.Uuid
+  reviewedBy String? @map("reviewed_by") @db.Uuid
+  reviewedAt DateTime? @map("reviewed_at")
+  reviewReason String? @map("review_reason")
+  withdrawals Withdrawal[]
 
   // Base Properties
   deleteAt DateTime? @map("delete_at") @db.Timestamptz(3)
@@ -154,9 +168,10 @@ model AffiliateLink {
 
   // SUB ID for validate USERID
   subId1 String? @map("sub_id_1") @db.VarChar(50) // User id
-  subId2 String? @map("sub_id_2") @db.VarChar(50) // Affliate Link Id 
+  subId2 String? @unique @map("sub_id_2") @db.VarChar(50) // Affliate Link Id 
   subId3 String? @map("sub_id_3") @db.VarChar(50) // Channel (web, android, ios)
-  subId4 String? @map("sub_id_4") @db.VarChar(50) // Tracking ID (`bb_{nanoId(20)}`)
+  subId4 String? @unique @map("sub_id_4") @db.VarChar(50) // Tracking ID (`bb_{nanoId(20)}`)
+  affiliateIdSnapshot String? @map("affiliate_id_snapshot")
   subId5 String? @map("sub_id_5") @db.VarChar(50) // Product ID
 
   // ORIGIN LINK: SHARE FROM SHOPEE
@@ -215,7 +230,7 @@ model Product {
   shopName    String @map("shop_name") @db.VarChar()
 
   originLink String @map("origin_link") @db.VarChar()
-  price      Float  @db.DoublePrecision
+  price      BigInt @db.BigInt
   sales      Float  @db.DoublePrecision
 
   imageUrl    String @map("image_url") @db.VarChar()
@@ -227,15 +242,15 @@ model Product {
   hasSellerCommission Boolean @map("has_seller_commission") @db.Boolean
   hasShopeeCommission Boolean @map("has_shopee_commission") @db.Boolean
 
-  commission     Float @db.DoublePrecision
-  sellerComFinal Float @map("seller_com_final") @db.DoublePrecision
-  shoppeComFinal Float @map("shopee_com_final") @db.DoublePrecision
+  commission     BigInt @db.BigInt
+  sellerComFinal BigInt @map("seller_com_final") @db.BigInt
+  shoppeComFinal BigInt @map("shopee_com_final") @db.BigInt
 
-  sellerRate        Float @map("seller_rate") @db.DoublePrecision
-  shopeeRate        Float @map("shopee_rate") @db.DoublePrecision
-  sellerRatePercent Float @map("seller_rate_percent") @db.DoublePrecision
-  shopeeRatePercent Float @map("shopee_rate_percent") @db.DoublePrecision
-  totalRatePercent  Float @map("total_rate_percent") @db.DoublePrecision
+  sellerRate        Int @map("seller_rate") @db.Integer
+  shopeeRate        Int @map("shopee_rate") @db.Integer
+  sellerRatePercent Int @map("seller_rate_percent") @db.Integer
+  shopeeRatePercent Int @map("shopee_rate_percent") @db.Integer
+  totalRatePercent  Int @map("total_rate_percent") @db.Integer
   // <==== end of COMMISSION
 
   isExtra      Boolean @map("is_extra") @db.Boolean
@@ -300,3 +315,301 @@ model LatestPriceHistory {
 }
 
 // ==== END PRODUCT ====
+
+enum CommissionState {
+  ESTIMATED
+  VALIDATED
+  PAID
+  REJECTED
+  REVERSED
+  MANUAL_REVIEW
+  @@schema("aff")
+}
+enum CashbackState {
+  PENDING
+  VALIDATED
+  AVAILABLE
+  REJECTED
+  REVERSED
+  @@schema("aff")
+}
+enum WithdrawalState {
+  PENDING
+  PROCESSING
+  COMPLETED
+  REJECTED
+  FAILED
+  @@schema("aff")
+}
+enum BatchState {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  @@schema("aff")
+}
+model ProviderCredential {
+  id String @id @default("SAFFI")
+  ciphertext String
+  iv String
+  tag String
+  version Int @default(1)
+  status String @default("UNVERIFIED")
+  lastValidatedAt DateTime? @map("last_validated_at")
+  rotatedBy String @map("rotated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("provider_credentials")
+  @@schema("aff")
+}
+model JobLease {
+  id String @id
+  owner String
+  expiresAt DateTime @map("expires_at")
+  @@map("job_leases")
+  @@schema("aff")
+}
+model ReconciliationBatch {
+  id String @id @default(uuid()) @db.Uuid
+  startDate String @map("start_date")
+  endDate String @map("end_date")
+  source String
+  status BatchState @default(QUEUED)
+  pages Int @default(0)
+  records Int @default(0)
+  failedRecords Int @default(0) @map("failed_records")
+  credentialVersion Int? @map("credential_version")
+  errorCode String? @map("error_code")
+  createdBy String? @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  rawPages ReconciliationPage[]
+  issues ReconciliationIssue[]
+  @@index([status, createdAt])
+  @@map("reconciliation_batches")
+  @@schema("aff")
+}
+model ReconciliationPage {
+  id String @id @default(uuid()) @db.Uuid
+  batchId String @map("batch_id") @db.Uuid
+  page Int
+  hash String
+  payload Json
+  batch ReconciliationBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  @@unique([batchId, page])
+  @@map("reconciliation_pages")
+  @@schema("aff")
+}
+model ProviderCheckout {
+  id String @id @default(uuid()) @db.Uuid
+  provider String @default("SAFFI")
+  checkoutId String @map("checkout_id")
+  affiliateId String @map("affiliate_id")
+  utmContent String @map("utm_content")
+  conversionState String @map("conversion_state")
+  rawStatus String @map("raw_status")
+  netRaw BigInt @map("net_raw")
+  scale Int @default(100000)
+  payload Json
+  purchasedAt DateTime @map("purchased_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  orders ProviderOrder[]
+  commission Commission?
+  @@unique([provider, checkoutId])
+  @@index([purchasedAt])
+  @@map("provider_checkouts")
+  @@schema("aff")
+}
+model ProviderOrder {
+  id String @id @default(uuid()) @db.Uuid
+  provider String @default("SAFFI")
+  orderId String @map("order_id")
+  orderSn String @map("order_sn")
+  affiliateTransactionId String? @unique @map("affiliate_transaction_id")
+  checkoutId String @map("checkout_id") @db.Uuid
+  status String
+  payload Json
+  createdAt DateTime @default(now()) @map("created_at")
+  checkout ProviderCheckout @relation(fields: [checkoutId], references: [id], onDelete: Restrict)
+  items ProviderOrderItem[]
+  @@unique([provider, orderId])
+  @@index([checkoutId])
+  @@map("provider_orders")
+  @@schema("aff")
+}
+model ProviderOrderItem {
+  id String @id @default(uuid()) @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  itemId String @map("item_id")
+  modelId String @map("model_id")
+  promotionId String @map("promotion_id")
+  status String
+  itemPriceRaw BigInt @map("item_price_raw")
+  actualAmountRaw BigInt @map("actual_amount_raw")
+  refundedAmountRaw BigInt @map("refunded_amount_raw")
+  commissionRaw BigInt @map("commission_raw")
+  brandCommissionRaw BigInt @map("brand_commission_raw")
+  brandRate Int @map("brand_rate")
+  platformRate Int @map("platform_rate")
+  scale Int @default(100000)
+  payload Json
+  order ProviderOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  @@unique([orderId, itemId, modelId, promotionId])
+  @@map("provider_order_items")
+  @@schema("aff")
+}
+model ReconciliationIssue {
+  id String @id @default(uuid()) @db.Uuid
+  batchId String @map("batch_id") @db.Uuid
+  checkoutId String? @map("checkout_id")
+  type String
+  severity String @default("ERROR")
+  status String @default("OPEN")
+  payload Json
+  resolution String?
+  resolvedBy String? @map("resolved_by")
+  resolvedAt DateTime? @map("resolved_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  batch ReconciliationBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  @@index([status, createdAt])
+  @@map("reconciliation_issues")
+  @@schema("aff")
+}
+model Commission {
+  id String @id @default(uuid()) @db.Uuid
+  checkoutId String @unique @map("checkout_id") @db.Uuid
+  userId String? @map("user_id") @db.Uuid
+  affiliateLinkId String? @map("affiliate_link_id") @db.Uuid
+  state CommissionState @default(ESTIMATED)
+  rawAmount BigInt @map("raw_amount")
+  scale Int @default(100000)
+  estimatedVnd BigInt @map("estimated_vnd")
+  settledVnd BigInt @default(0) @map("settled_vnd")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  checkout ProviderCheckout @relation(fields: [checkoutId], references: [id], onDelete: Restrict)
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+  cashback CashbackAllocation?
+  settlementItem SettlementItem?
+  @@index([userId, state])
+  @@map("commissions")
+  @@schema("aff")
+}
+model AffiliatePolicy {
+  id Int @id
+  userBps Int @default(8500) @map("user_bps")
+  minWithdrawal BigInt @default(50000) @map("min_withdrawal")
+  createdAt DateTime @default(now()) @map("created_at")
+  cashbacks CashbackAllocation[]
+  @@map("affiliate_policies")
+  @@schema("aff")
+}
+model CashbackAllocation {
+  id String @id @default(uuid()) @db.Uuid
+  commissionId String @unique @map("commission_id") @db.Uuid
+  policyId Int @map("policy_id")
+  userBps Int @default(8500) @map("user_bps")
+  userAmount BigInt @default(0) @map("user_amount")
+  platformAmount BigInt @default(0) @map("platform_amount")
+  state CashbackState @default(PENDING)
+  createdAt DateTime @default(now()) @map("created_at")
+  commission Commission @relation(fields: [commissionId], references: [id], onDelete: Restrict)
+  policy AffiliatePolicy @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  @@map("cashback_allocations")
+  @@schema("aff")
+}
+model SettlementBatch {
+  id String @id @default(uuid()) @db.Uuid
+  reference String @unique
+  grossVnd BigInt @map("gross_vnd")
+  deductionVnd BigInt @map("deduction_vnd")
+  netVnd BigInt @map("net_vnd")
+  status String @default("DRAFT")
+  createdBy String @map("created_by")
+  confirmedBy String? @map("confirmed_by")
+  confirmedAt DateTime? @map("confirmed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  items SettlementItem[]
+  @@map("settlement_batches")
+  @@schema("aff")
+}
+model SettlementItem {
+  id String @id @default(uuid()) @db.Uuid
+  settlementId String @map("settlement_id") @db.Uuid
+  commissionId String @unique @map("commission_id") @db.Uuid
+  rawSnapshot BigInt @map("raw_snapshot")
+  netVnd BigInt @map("net_vnd")
+  settlement SettlementBatch @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  commission Commission @relation(fields: [commissionId], references: [id], onDelete: Restrict)
+  @@unique([settlementId, commissionId])
+  @@map("settlement_items")
+  @@schema("aff")
+}
+model Wallet {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+  available BigInt @default(0)
+  reserved BigInt @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions WalletTransaction[]
+  @@map("wallets")
+  @@schema("aff")
+}
+model WalletTransaction {
+  id String @id @default(uuid()) @db.Uuid
+  walletId String @map("wallet_id") @db.Uuid
+  idempotencyKey String @unique @map("idempotency_key")
+  type String
+  availableDelta BigInt @map("available_delta")
+  reservedDelta BigInt @map("reserved_delta")
+  availableAfter BigInt @map("available_after")
+  reservedAfter BigInt @map("reserved_after")
+  reference String
+  reason String?
+  createdBy String? @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  @@index([walletId, createdAt])
+  @@map("wallet_transactions")
+  @@schema("aff")
+}
+model Withdrawal {
+  id String @id @default(uuid()) @db.Uuid
+  idempotencyKey String @unique @map("idempotency_key")
+  userId String @map("user_id") @db.Uuid
+  bankId String @map("bank_id") @db.Uuid
+  amount BigInt
+  status WithdrawalState @default(PENDING)
+  bankSnapshot Json @map("bank_snapshot")
+  transferReference String? @map("transfer_reference")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  bank UserBank @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  history WithdrawalStatusHistory[]
+  @@index([userId, status])
+  @@map("withdrawals")
+  @@schema("aff")
+}
+model WithdrawalStatusHistory {
+  id String @id @default(uuid()) @db.Uuid
+  withdrawalId String @map("withdrawal_id") @db.Uuid
+  status WithdrawalState
+  actorId String @map("actor_id")
+  reason String
+  createdAt DateTime @default(now()) @map("created_at")
+  withdrawal Withdrawal @relation(fields: [withdrawalId], references: [id], onDelete: Restrict)
+  @@map("withdrawal_status_history")
+  @@schema("aff")
+}
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+  actorId String? @map("actor_id")
+  action String
+  reference String
+  metadata Json
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([createdAt])
+  @@map("audit_logs")
+  @@schema("aff")
+}

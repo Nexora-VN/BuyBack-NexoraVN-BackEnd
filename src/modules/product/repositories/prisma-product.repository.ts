@@ -16,8 +16,8 @@ export class PrismaProductRepository extends ProductRepository {
     super();
   }
 
-  create(data: CreateProductData): Promise<ProductRecord> {
-    return this.prisma.product.create({ data });
+  async create(data: CreateProductData): Promise<ProductRecord> {
+    return this.fromStorage(await this.prisma.product.create({ data: { ...data, ...this.toStorageRates(data) } }));
   }
 
   async findMany(options: FindProductsOptions): Promise<FindProductsResult> {
@@ -46,19 +46,21 @@ export class PrismaProductRepository extends ProductRepository {
       this.prisma.product.count({ where }),
     ]);
 
-    return { items, total };
+    return { items: items.map(i => this.fromStorage(i)), total };
   }
 
-  findById(id: string): Promise<ProductRecord | null> {
-    return this.prisma.product.findUnique({ where: { id } });
+  async findById(id: string): Promise<ProductRecord | null> {
+    const row = await this.prisma.product.findUnique({ where: { id } });
+    return row ? this.fromStorage(row) : null;
   }
 
-  findByExternalIds(itemId: bigint, shopId: bigint): Promise<ProductRecord | null> {
-    return this.prisma.product.findFirst({ where: { itemId, shopId } });
+  async findByExternalIds(itemId: bigint, shopId: bigint): Promise<ProductRecord | null> {
+    const row = await this.prisma.product.findFirst({ where: { itemId, shopId } });
+    return row ? this.fromStorage(row) : null;
   }
 
-  update(id: string, data: UpdateProductData): Promise<ProductRecord> {
-    return this.prisma.product.update({ where: { id }, data });
+  async update(id: string, data: UpdateProductData): Promise<ProductRecord> {
+    return this.fromStorage(await this.prisma.product.update({ where: { id }, data: { ...data, ...this.toStorageRates(data) } }));
   }
 
   countAffiliateLinks(productId: string): Promise<number> {
@@ -69,7 +71,21 @@ export class PrismaProductRepository extends ProductRepository {
     await this.prisma.product.delete({ where: { id } });
   }
 
-  findByItemId(itemId: number): Promise<ProductRecord | null> {
-    return this.prisma.product.findFirst({ where: { itemId } });
+  async findByItemId(itemId: number): Promise<ProductRecord | null> {
+    const row = await this.prisma.product.findFirst({ where: { itemId } });
+    return row ? this.fromStorage(row) : null;
+  }
+  private toStorageRates(data: UpdateProductData) {
+    const output: Partial<Record<'sellerRate' | 'shopeeRate' | 'sellerRatePercent' | 'shopeeRatePercent' | 'totalRatePercent', number>> = {};
+    for (const field of ['sellerRate', 'shopeeRate', 'sellerRatePercent', 'shopeeRatePercent', 'totalRatePercent'] as const) {
+      const value = data[field];
+      if (value !== undefined) output[field] = Math.round(value * (field.endsWith('Percent') ? 100 : 10000));
+    }
+    return output;
+  }
+  private fromStorage(row: ProductRecord): ProductRecord {
+    return { ...row, sellerRate: row.sellerRate / 10000, shopeeRate: row.shopeeRate / 10000,
+      sellerRatePercent: row.sellerRatePercent / 100, shopeeRatePercent: row.shopeeRatePercent / 100,
+      totalRatePercent: row.totalRatePercent / 100 };
   }
 }

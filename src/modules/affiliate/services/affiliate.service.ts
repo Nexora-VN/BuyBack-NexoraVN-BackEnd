@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AffiliateLinkStatus, ConvertOrigin } from '../../../common/domain/enums.js';
 import type { CreateAffiliateLinkDto } from '../dto/create-affiliate-link.dto.js';
 import type { ListAffiliateLinksQueryDto } from '../dto/list-affiliate-query.dto.js';
@@ -79,7 +79,12 @@ export class AffiliateService {
     input: UpdateAffiliateLinkDto,
     actorId: string,
   ): Promise<AffiliateResponseDto> {
-    await this.getAffiliateLink(id);
+    const current = await this.getAffiliateLink(id);
+    if (current.subId2 || current.subId4) {
+      for (const field of ['userId','productId','subId1','subId2','subId3','subId4','subId5','fullLinkSystem'] as const) {
+        if (input[field] !== undefined && input[field] !== current[field]) throw new ConflictException('GENERATED_LINK_ATTRIBUTION_IS_IMMUTABLE');
+      }
+    }
 
     const link = await this.affiliateRepository.update(id, {
       ...(input.userId !== undefined ? { userId: input.userId } : {}),

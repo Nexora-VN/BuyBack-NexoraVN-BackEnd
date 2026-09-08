@@ -2,6 +2,11 @@ process.env.NODE_ENV = 'test';
 process.env.PORT = '3000';
 process.env.DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://buyback:buyback@localhost:5433/buyback?schema=aff';
+// These suites create/remove fixtures. Never run them against a remote application database.
+const testDatabaseHost = new URL(process.env.DATABASE_URL).hostname;
+if (!['localhost', '127.0.0.1', 'postgres'].includes(testDatabaseHost)) {
+  throw new Error('E2E tests require an isolated local PostgreSQL database');
+}
 process.env.CORS_ORIGINS = 'http://localhost:3001';
 process.env.JWT_ACCESS_SECRET = 'test-access-secret-at-least-32-characters';
 process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-at-least-32-characters';

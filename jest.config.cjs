@@ -11,4 +11,5 @@ module.exports = {
   testMatch: ['<rootDir>/src/**/*.spec.ts'],
   collectCoverageFrom: ['src/**/*.ts', '!src/generated/**', '!src/main.ts'],
   coverageDirectory: 'coverage',
+  watchman: false,
 };

@@ -10,4 +10,5 @@ module.exports = {
   testEnvironment: 'node',
   testMatch: ['<rootDir>/test/**/*.e2e-spec.ts'],
   setupFiles: ['<rootDir>/test/setup-env.cjs'],
+  watchman: false,
 };

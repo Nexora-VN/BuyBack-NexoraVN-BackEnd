@@ -40,6 +40,7 @@ class InMemoryAffiliateRepository extends AffiliateRepository {
       updatedBy: data.updatedBy ?? null,
       userId: data.userId,
       productId: data.productId,
+      affiliateIdSnapshot: data.affiliateIdSnapshot ?? null,
     };
     this.links.set(record.id, record);
     return Promise.resolve(record);

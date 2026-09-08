@@ -1,3 +1,4 @@
+import { integer } from '../../finance/domain/money.js';
 import { randomUUID } from 'node:crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { CreateProductDto } from '../dto/create-product.dto.js';
@@ -23,16 +24,16 @@ export class ProductService {
       productName: input.productName.trim(),
       shopName: input.shopName.trim(),
       originLink: input.originLink.trim(),
-      price: input.price,
+      price: integer(input.price),
       sales: input.sales,
       imageUrl: input.imageUrl.trim(),
       productLink: input.productLink.trim(),
       rating: input.rating.trim(),
       hasSellerCommission: input.hasSellerCommission,
       hasShopeeCommission: input.hasShopeeCommission,
-      commission: input.commission,
-      sellerComFinal: input.sellerComFinal,
-      shoppeComFinal: input.shoppeComFinal,
+      commission: integer(input.commission),
+      sellerComFinal: integer(input.sellerComFinal),
+      shoppeComFinal: integer(input.shoppeComFinal),
       sellerRate: input.sellerRate,
       shopeeRate: input.shopeeRate,
       sellerRatePercent: input.sellerRatePercent,
@@ -135,7 +136,7 @@ export class ProductService {
       ...(input.productName === undefined ? {} : { productName: input.productName.trim() }),
       ...(input.shopName === undefined ? {} : { shopName: input.shopName.trim() }),
       ...(input.originLink === undefined ? {} : { originLink: input.originLink.trim() }),
-      ...(input.price === undefined ? {} : { price: input.price }),
+      ...(input.price === undefined ? {} : { price: integer(input.price) }),
       ...(input.sales === undefined ? {} : { sales: input.sales }),
       ...(input.imageUrl === undefined ? {} : { imageUrl: input.imageUrl.trim() }),
       ...(input.productLink === undefined ? {} : { productLink: input.productLink.trim() }),
@@ -146,9 +147,9 @@ export class ProductService {
       ...(input.hasShopeeCommission === undefined
         ? {}
         : { hasShopeeCommission: input.hasShopeeCommission }),
-      ...(input.commission === undefined ? {} : { commission: input.commission }),
-      ...(input.sellerComFinal === undefined ? {} : { sellerComFinal: input.sellerComFinal }),
-      ...(input.shoppeComFinal === undefined ? {} : { shoppeComFinal: input.shoppeComFinal }),
+      ...(input.commission === undefined ? {} : { commission: integer(input.commission) }),
+      ...(input.sellerComFinal === undefined ? {} : { sellerComFinal: integer(input.sellerComFinal) }),
+      ...(input.shoppeComFinal === undefined ? {} : { shoppeComFinal: integer(input.shoppeComFinal) }),
       ...(input.sellerRate === undefined ? {} : { sellerRate: input.sellerRate }),
       ...(input.shopeeRate === undefined ? {} : { shopeeRate: input.shopeeRate }),
       ...(input.sellerRatePercent === undefined
@@ -171,6 +172,10 @@ export class ProductService {
   private toResponse(product: ProductRecord): ProductResponseDto {
     return {
       ...product,
+      price: product.price.toString(),
+      commission: product.commission.toString(),
+      sellerComFinal: product.sellerComFinal.toString(),
+      shoppeComFinal: product.shoppeComFinal.toString(),
       itemId: product.itemId.toString(),
       shopId: product.shopId.toString(),
       cap: product.cap.toString(),

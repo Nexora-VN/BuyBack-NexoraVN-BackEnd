@@ -16,6 +16,8 @@ import { RolesGuard } from '../../auth/guards/roles.guard.js';
 import type { AuthenticatedUser } from '../../auth/interfaces/authenticated-user.js';
 import { GenerateAffiliateService } from '../services/generate-affiiliate.service.js';
 import { ErrorCode } from '../../../common/domain/error-code.js';
+import { validate } from '../../finance/finance.contract.js';
+import { z } from 'zod';
 
 @ApiTags('generate-affiliate')
 @ApiBearerAuth('access-token')
@@ -46,6 +48,7 @@ export class GenerateAffiliateController {
     @Body() input: { url: string },
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<{ link: string | null; code: ErrorCode | null }> {
-    return this.generateAffiliateService.generateAffiliateLinkBySystem(input.url, actor.id);
+    const value = validate(z.object({ url: z.url().max(4096) }), input);
+    return this.generateAffiliateService.generateAffiliateLinkBySystem(value.url, actor.id);
   }
 }
