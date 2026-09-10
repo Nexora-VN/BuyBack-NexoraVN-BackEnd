@@ -6,8 +6,8 @@ import { bootstrap } from '../src/main.js';
 import { PrismaService } from '../src/infrastructure/database/prisma/prisma.service.js';
 import { ReconciliationEngine } from '../src/modules/reconciliation/reconciliation-engine.js';
 import { ReconciliationService } from '../src/modules/reconciliation/reconciliation.service.js';
-import { SaffiClient } from '../src/modules/reconciliation/saffi.client.js';
 import { checkoutSchema, decodeProvider } from '../src/modules/reconciliation/saffi.contract.js';
+import { AddLiveTagClient } from '../src/modules/reconciliation/addlivetag.client.js';
 import { ConfigService } from '@nestjs/config';
 
 describe('Affiliate finance end-to-end', () => {
@@ -112,9 +112,12 @@ describe('Affiliate finance end-to-end', () => {
     process.env.SETTLEMENT_ENABLED = 'true';
     process.env.WITHDRAWALS_ENABLED = 'true';
     process.env.RECONCILIATION_ENABLED = 'false';
+    process.env.ADDLIVETAG_API_KEY =
+      process.env.ADDLIVETAG_API_KEY || 'test-addlivetag-api-key-placeholder';
     app = await bootstrap();
     app.get(ConfigService).set('SETTLEMENT_ENABLED', true);
     app.get(ConfigService).set('WITHDRAWALS_ENABLED', true);
+    app.get(ConfigService).set('ADDLIVETAG_API_KEY', process.env.ADDLIVETAG_API_KEY);
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
     db = app.get(PrismaService);
@@ -238,7 +241,9 @@ describe('Affiliate finance end-to-end', () => {
       if (productId) await db.product.deleteMany({ where: { id: productId } });
       await db.userBank.deleteMany({ where: { userId: { in: ids } } });
       await db.authSession.deleteMany({ where: { userId: { in: ids } } });
-      await db.providerCredential.deleteMany({ where: { rotatedBy: { in: ids } } });
+      await db.providerCredential.deleteMany({
+        where: { OR: [{ rotatedBy: { in: ids } }, { id: 'ADDLIVETAG' }] },
+      });
       await db.auditLog.deleteMany({
         where: { OR: [{ actorId: { in: ids } }, { reference: commissionId ?? 'none' }] },
       });
@@ -259,31 +264,29 @@ describe('Affiliate finance end-to-end', () => {
   it('rejects USER financial administration and ADMIN settlement/credential writes', async () => {
     await api(userToken).get('admin/commissions').expect(403);
     await api(adminToken)
-      .put('admin/provider-credential', { cookie: 'never-logged-test-cookie' })
+      .put('admin/provider-credential', { accountId: '420', expectedAffiliate: 'affiliate-test' })
       .expect(403);
     await api(adminToken).post('admin/settlements', {}).expect(403);
     await api(userToken)
       .get('me/orders/' + randomUUID())
       .expect(404);
   });
-  it('encrypts cookie and does not return it from metadata', async () => {
+  it('rotates provider credential and does not return secret', async () => {
     const response = await api(superToken)
-      .put('admin/provider-credential', { cookie: 'never-logged-test-cookie' })
+      .put('admin/provider-credential', { accountId: '420', expectedAffiliate: 'affiliate-test' })
       .expect(200);
-    expect(JSON.stringify(response.body)).not.toContain('cookie');
-    const stored = await db.providerCredential.findUniqueOrThrow({ where: { id: 'SAFFI' } });
-    expect(stored.ciphertext).not.toContain('never-logged-test-cookie');
+    expect(JSON.stringify(response.body)).not.toContain('apiKey');
+    const stored = await db.providerCredential.findUniqueOrThrow({ where: { id: 'ADDLIVETAG' } });
+    expect(stored.accountId).toBe('420');
+    expect(stored.expectedAffiliate).toBe('affiliate-test');
   });
-  it('ingests a Saffi batch through the worker and is idempotent without wallet credit', async () => {
+  it('ingests a batch through the worker and is idempotent without wallet credit', async () => {
     const parsed = report(2);
-    const spy = jest.spyOn(app.get(SaffiClient), 'report').mockResolvedValue({
-      report: {
-        page_num: 1,
-        page_size: 100,
-        total_count: 1,
-        list: [decodeProvider(JSON.stringify(parsed))],
-      },
-      raw: { code: 0, data: { list: [parsed] } },
+    const spy = jest.spyOn(app.get(AddLiveTagClient), 'report').mockResolvedValue({
+      ok: true,
+      meta: { type: 'items', page: 1, page_size: 50, total: 0 },
+      summary: { estimated_total_commission: '0' },
+      data: [],
     });
     const worker = app.get(ReconciliationService);
     const queued = await worker.enqueue('2026-08-21', '2026-08-21', 'TEST', adminId);
