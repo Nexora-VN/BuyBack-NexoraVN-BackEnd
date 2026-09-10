@@ -148,8 +148,12 @@ export class ProductService {
         ? {}
         : { hasShopeeCommission: input.hasShopeeCommission }),
       ...(input.commission === undefined ? {} : { commission: integer(input.commission) }),
-      ...(input.sellerComFinal === undefined ? {} : { sellerComFinal: integer(input.sellerComFinal) }),
-      ...(input.shoppeComFinal === undefined ? {} : { shoppeComFinal: integer(input.shoppeComFinal) }),
+      ...(input.sellerComFinal === undefined
+        ? {}
+        : { sellerComFinal: integer(input.sellerComFinal) }),
+      ...(input.shoppeComFinal === undefined
+        ? {}
+        : { shoppeComFinal: integer(input.shoppeComFinal) }),
       ...(input.sellerRate === undefined ? {} : { sellerRate: input.sellerRate }),
       ...(input.shopeeRate === undefined ? {} : { shopeeRate: input.shopeeRate }),
       ...(input.sellerRatePercent === undefined

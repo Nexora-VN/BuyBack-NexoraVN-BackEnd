@@ -1,13 +1,20 @@
-name: CI
+name: Backend Production
 
 on:
   push:
     branches: [main]
-  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-production
+  cancel-in-progress: false
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:18-alpine
@@ -34,6 +41,7 @@ jobs:
       CORS_ORIGINS: http://localhost:3001
       SWAGGER_ENABLED: 'false'
       LOG_LEVEL: silent
+      ADDLIVETAG_API_KEY: ci-placeholder-not-a-live-key
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -44,6 +52,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: node --test scripts/deploy-production.check.mjs
+      - run: bash -n scripts/deploy-production.sh
       - run: pnpm prisma:generate
       - run: pnpm prisma:validate
       - run: pnpm prisma:migrate:deploy
@@ -53,3 +63,64 @@ jobs:
       - run: pnpm test
       - run: pnpm test:e2e
       - run: pnpm build
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.publish.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      - name: Build and publish immutable release
+        id: publish
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${REPOSITORY,,}"
+          docker build --label "org.opencontainers.image.source=https://github.com/$REPOSITORY" --label "org.opencontainers.image.revision=$REVISION"  -t "$image:$REVISION" .
+          docker push "$image:$REVISION"
+          digest=$(docker image inspect "$image:$REVISION" --format '{{index .RepoDigests 0}}')
+          [[ "$digest" == "$image@sha256:"* ]]
+          printf 'image=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy backend on production VPS
+        env:
+          DEPLOY_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+          IMAGE: ${{ needs.publish.outputs.image }}
+          REVISION: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY" && test -n "$KNOWN_HOSTS"
+          ssh_dir=$(mktemp -d)
+          trap 'rm -f -- "$ssh_dir/key" "$ssh_dir/known_hosts"; rmdir "$ssh_dir"' EXIT
+          chmod 700 "$ssh_dir"
+          printf '%s\n' "$DEPLOY_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          chmod 600 "$ssh_dir/key" "$ssh_dir/known_hosts"
+          # Pinned host keys supplied out-of-band; never disable host verification.
+          ssh -p 22 -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$ssh_dir/known_hosts" \
+            -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            deploy@4.213.53.132 \
+            "bash -s -- backend '$IMAGE' '$REVISION' '$RUN_NUMBER'" < scripts/deploy-production.sh

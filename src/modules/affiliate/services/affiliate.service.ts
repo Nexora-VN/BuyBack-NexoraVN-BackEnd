@@ -81,8 +81,18 @@ export class AffiliateService {
   ): Promise<AffiliateResponseDto> {
     const current = await this.getAffiliateLink(id);
     if (current.subId2 || current.subId4) {
-      for (const field of ['userId','productId','subId1','subId2','subId3','subId4','subId5','fullLinkSystem'] as const) {
-        if (input[field] !== undefined && input[field] !== current[field]) throw new ConflictException('GENERATED_LINK_ATTRIBUTION_IS_IMMUTABLE');
+      for (const field of [
+        'userId',
+        'productId',
+        'subId1',
+        'subId2',
+        'subId3',
+        'subId4',
+        'subId5',
+        'fullLinkSystem',
+      ] as const) {
+        if (input[field] !== undefined && input[field] !== current[field])
+          throw new ConflictException('GENERATED_LINK_ATTRIBUTION_IS_IMMUTABLE');
       }
     }
 

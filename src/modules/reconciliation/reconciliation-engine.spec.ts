@@ -1,4 +1,4 @@
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import { ReconciliationEngine } from './reconciliation-engine.js';
 import type { SaffiCheckout } from './saffi.contract.js';
 import type { FinanceRepository, Tx } from '../finance/finance.repository.js';
@@ -109,12 +109,14 @@ describe('ReconciliationEngine', () => {
     };
 
     mockRepo = {
-      transaction: jest.fn().mockImplementation((fn: (tx: Tx) => Promise<unknown>) => fn(mockTx as unknown as Tx)),
+      transaction: jest
+        .fn()
+        .mockImplementation((fn: (tx: Tx) => Promise<unknown>) => fn(mockTx as unknown as Tx)),
     } as unknown as jest.Mocked<FinanceRepository>;
 
     mockWallet = {
-      post: jest.fn().mockResolvedValue({ id: 'wallet-tx-uuid' } as any),
-    } as unknown as jest.Mocked<WalletService>;
+      post: jest.fn().mockResolvedValue({ id: 'wallet-tx-uuid' }),
+    };
 
     mockConfig = {
       get: jest.fn().mockImplementation((key: string) => {

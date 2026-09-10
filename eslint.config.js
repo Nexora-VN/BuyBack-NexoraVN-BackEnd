@@ -29,5 +29,21 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Third-party transport and test doubles intentionally accept evolving data shapes.
+    // Runtime contract validation and money/ledger code remain checked separately.
+    files: ['src/modules/reconciliation/addlivetag.client.ts', 'src/**/*.spec.ts', 'test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+  {
+    files: ['src/**/*.spec.ts', 'test/**/*.ts'],
+    rules: { '@typescript-eslint/unbound-method': 'off' },
+  },
   prettier,
 );

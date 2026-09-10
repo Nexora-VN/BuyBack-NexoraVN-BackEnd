@@ -6,14 +6,15 @@ describe('Exact finance arithmetic', () => {
     expect(() => integer('1.5')).toThrow();
   });
   it('allocates all settlement VND and assigns remainder deterministically', () => {
-    expect(allocateNet(10n, [1n,1n,1n])).toEqual([3n,3n,4n]);
+    expect(allocateNet(10n, [1n, 1n, 1n])).toEqual([3n, 3n, 4n]);
     const split = splitCashback(1553n);
     expect(split).toEqual({ user: 1320n, platform: 233n });
     expect(split.user + split.platform).toBe(1553n);
   });
   it('rejects missing, malformed, or extra attribution segments', () => {
-    for (const s of ['----', 'anything', 'a-b-web-c-d-extra']) expect(() => parseAttribution(s)).toThrow();
+    for (const s of ['----', 'anything', 'a-b-web-c-d-extra'])
+      expect(() => parseAttribution(s)).toThrow();
     const id = 'a'.repeat(32);
-    expect(parseAttribution([id,id,'web','bb_' + id,id].join('-')).link).toBe(id);
+    expect(parseAttribution([id, id, 'web', 'bb_' + id, id].join('-')).link).toBe(id);
   });
 });
