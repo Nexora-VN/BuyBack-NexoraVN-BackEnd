@@ -26,7 +26,12 @@ describe('AddLiveTag env secret', () => {
   it('does not fall back to DB when env is missing', async () => {
     const findUnique = jest.fn().mockResolvedValue(metadata);
     const repo = { db: { providerCredential: { findUnique } } } as unknown as FinanceRepository;
-    const service = new CredentialService(repo, new ConfigService({}));
+    const config = new ConfigService({});
+    jest.spyOn(config, 'get').mockImplementation((key: string) => {
+      if (key === 'ADDLIVETAG_API_KEY') return undefined;
+      return undefined;
+    });
+    const service = new CredentialService(repo, config);
     await expect(service.read()).rejects.toThrow('ADDLIVETAG_API_KEY_NOT_CONFIGURED');
     expect(findUnique).not.toHaveBeenCalled();
   });
