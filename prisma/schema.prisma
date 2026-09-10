@@ -354,6 +354,10 @@ model ProviderCredential {
   iv String
   tag String
   version Int @default(1)
+  accountId String? @map("account_id")
+  expectedAffiliate String? @map("expected_affiliate")
+  verifiedAt DateTime? @map("verified_at")
+  verificationEvidence String? @map("verification_evidence")
   status String @default("UNVERIFIED")
   lastValidatedAt DateTime? @map("last_validated_at")
   rotatedBy String @map("rotated_by")
@@ -373,6 +377,10 @@ model ReconciliationBatch {
   startDate String @map("start_date")
   endDate String @map("end_date")
   source String
+  provider String @default("SAFFI")
+  accountId String? @map("account_id")
+  expectedAffiliate String? @map("expected_affiliate")
+  summary Json?
   status BatchState @default(QUEUED)
   pages Int @default(0)
   records Int @default(0)
@@ -384,6 +392,7 @@ model ReconciliationBatch {
   completedAt DateTime? @map("completed_at")
   rawPages ReconciliationPage[]
   issues ReconciliationIssue[]
+  itemSnapshots ConversionItemSnapshot[]
   @@index([status, createdAt])
   @@map("reconciliation_batches")
   @@schema("aff")
@@ -402,6 +411,9 @@ model ReconciliationPage {
 model ProviderCheckout {
   id String @id @default(uuid()) @db.Uuid
   provider String @default("SAFFI")
+  accountId String @default("") @map("account_id")
+  revision Int @default(1)
+  sourceHash String? @map("source_hash")
   checkoutId String @map("checkout_id")
   affiliateId String @map("affiliate_id")
   utmContent String @map("utm_content")
@@ -462,6 +474,9 @@ model ReconciliationIssue {
   batchId String @map("batch_id") @db.Uuid
   checkoutId String? @map("checkout_id")
   type String
+  provider String @default("SAFFI")
+  accountId String? @map("account_id")
+  sourceHash String? @map("source_hash")
   severity String @default("ERROR")
   status String @default("OPEN")
   payload Json
@@ -537,11 +552,27 @@ model SettlementItem {
   settlementId String @map("settlement_id") @db.Uuid
   commissionId String @unique @map("commission_id") @db.Uuid
   rawSnapshot BigInt @map("raw_snapshot")
+  revisionSnapshot Int @default(1) @map("revision_snapshot")
   netVnd BigInt @map("net_vnd")
   settlement SettlementBatch @relation(fields: [settlementId], references: [id], onDelete: Restrict)
   commission Commission @relation(fields: [commissionId], references: [id], onDelete: Restrict)
   @@unique([settlementId, commissionId])
   @@map("settlement_items")
+  @@schema("aff")
+}
+
+model ConversionItemSnapshot {
+  id String @id @default(uuid()) @db.Uuid
+  batchId String @map("batch_id") @db.Uuid
+  page Int
+  position Int
+  checkoutId String @map("checkout_id")
+  orderSn String @map("order_sn")
+  payload Json
+  batch ReconciliationBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  @@unique([batchId, page, position])
+  @@index([batchId, checkoutId])
+  @@map("conversion_item_snapshots")
   @@schema("aff")
 }
 model Wallet {

@@ -10,10 +10,10 @@ export function integer(value: unknown): bigint {
 
 export function allocateNet(total: bigint, weights: bigint[]): bigint[] {
   const sum = weights.reduce((a, b) => a + b, 0n);
-  if (total < 0n || sum <= 0n || weights.some(w => w < 0n)) throw new Error('INVALID_ALLOCATION');
+  if (total < 0n || sum <= 0n || weights.some((w) => w < 0n)) throw new Error('INVALID_ALLOCATION');
   let remaining = total;
   return weights.map((weight, i) => {
-    const amount = i === weights.length - 1 ? remaining : total * weight / sum;
+    const amount = i === weights.length - 1 ? remaining : (total * weight) / sum;
     remaining -= amount;
     return amount;
   });
@@ -21,7 +21,7 @@ export function allocateNet(total: bigint, weights: bigint[]): bigint[] {
 
 export function splitCashback(net: bigint, bps = USER_BPS) {
   if (net < 0n || bps < 0n || bps > 10000n) throw new Error('INVALID_CASHBACK');
-  const user = net * bps / 10000n;
+  const user = (net * bps) / 10000n;
   return { user, platform: net - user };
 }
 
@@ -29,9 +29,18 @@ export function parseAttribution(content: string) {
   const parts = content.split('-');
   const [user, link, channel, tracking, product] = parts;
   const hex = /^[a-f0-9]{32}$/i;
-  if (parts.length !== 5 || !user || !link || !product || !tracking ||
-      !hex.test(user) || !hex.test(link) || !hex.test(product) ||
-      !/^(web|ios|android)$/.test(channel ?? '') || !/^bb_[a-zA-Z0-9_]{20,32}$/.test(tracking))
+  if (
+    parts.length !== 5 ||
+    !user ||
+    !link ||
+    !product ||
+    !tracking ||
+    !hex.test(user) ||
+    !hex.test(link) ||
+    !hex.test(product) ||
+    !/^(web|ios|android)$/.test(channel ?? '') ||
+    !/^bb_[a-zA-Z0-9_]{20,32}$/.test(tracking)
+  )
     throw new Error('INVALID_ATTRIBUTION');
   return { user, link, channel: channel!, tracking, product };
 }

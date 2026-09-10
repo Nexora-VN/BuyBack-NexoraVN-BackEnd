@@ -4,133 +4,270 @@ import { Cron, Interval } from '@nestjs/schedule';
 import { createHash, randomUUID } from 'node:crypto';
 import { FinanceRepository, audit, json } from '../finance/finance.repository.js';
 import { CredentialService } from './credential.service.js';
-import { ProviderError, SaffiClient } from './saffi.client.js';
-import { checkoutSchema } from './saffi.contract.js';
-import { ReconciliationEngine } from './reconciliation-engine.js';
+import { ProviderError } from './saffi.client.js';
+import { AddLiveTagClient } from './addlivetag.client.js';
+import { AddLiveTagEngine } from './addlivetag-engine.js';
+import { splitDateRange, type ConversionItem } from './addlivetag.contract.js';
 
 function vietnamDate(offset: number) {
   return new Date(Date.now() + 7 * 3600000 - offset * 86400000).toISOString().slice(0, 10);
-}
-function sanitize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitize);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
-    .filter(([k]) => !/cookie|password|secret|authorization|token/i.test(k)).map(([k, v]) => [k, sanitize(v)]));
-  return value;
 }
 @Injectable()
 export class ReconciliationService {
   private readonly owner = randomUUID();
   private busy = false;
   private readonly logger = new Logger(ReconciliationService.name);
-  constructor(private readonly repo: FinanceRepository, private readonly credentials: CredentialService,
-    private readonly client: SaffiClient, private readonly engine: ReconciliationEngine, private readonly config: ConfigService) {}
+  constructor(
+    private readonly repo: FinanceRepository,
+    private readonly credentials: CredentialService,
+    private readonly client: AddLiveTagClient,
+    private readonly engine: AddLiveTagEngine,
+    private readonly config: ConfigService,
+  ) {}
+  async enqueueRange(startDate: string, endDate: string, source: string, actor?: string) {
+    let chunks: Array<{ startDate: string; endDate: string }>;
+    try {
+      chunks = splitDateRange(startDate, endDate, 90);
+    } catch {
+      throw new ConflictException('INVALID_DATE_RANGE');
+    }
+    const batches = [];
+    for (const chunk of chunks) {
+      batches.push(await this.enqueueSingle(chunk.startDate, chunk.endDate, source, actor));
+    }
+    return batches;
+  }
   async enqueue(startDate: string, endDate: string, source: string, actor?: string) {
-    return this.repo.transaction(async tx => {
-      const existing = await tx.reconciliationBatch.findFirst({ where: { startDate, endDate, status: { in: ['QUEUED', 'RUNNING'] } } });
+    let chunks: Array<{ startDate: string; endDate: string }>;
+    try {
+      chunks = splitDateRange(startDate, endDate, 90);
+    } catch {
+      throw new ConflictException('INVALID_DATE_RANGE');
+    }
+    if (chunks.length > 1) {
+      const batches = await this.enqueueRange(startDate, endDate, source, actor);
+      return batches[0]!;
+    }
+    return this.enqueueSingle(startDate, endDate, source, actor);
+  }
+  private async enqueueSingle(startDate: string, endDate: string, source: string, actor?: string) {
+    const credential = await this.credentials.metadata();
+    if (!credential?.accountId || !credential.expectedAffiliate)
+      throw new ConflictException('CONFIGURE_PROVIDER_FIRST');
+    return this.repo.transaction(async (tx) => {
+      const where = {
+        provider: 'ADDLIVETAG',
+        accountId: credential.accountId,
+        startDate,
+        endDate,
+        status: { in: ['QUEUED', 'RUNNING'] as ('QUEUED' | 'RUNNING')[] },
+      };
+      const existing = await tx.reconciliationBatch.findFirst({ where });
       if (existing) return existing;
-      const row = await tx.reconciliationBatch.create({ data: { startDate, endDate, source, createdBy: actor } });
+      const row = await tx.reconciliationBatch.create({
+        data: {
+          startDate,
+          endDate,
+          source,
+          createdBy: actor,
+          provider: 'ADDLIVETAG',
+          accountId: credential.accountId,
+          expectedAffiliate: credential.expectedAffiliate,
+          credentialVersion: credential.version,
+        },
+      });
       await audit(tx, actor ?? null, 'RECONCILIATION_QUEUED', row.id);
       return row;
     });
   }
   async retry(id: string, actor: string) {
     const row = await this.repo.db.reconciliationBatch.findUnique({ where: { id } });
-    if (!row || row.status !== 'FAILED') throw new ConflictException('ONLY_FAILED_BATCH_CAN_RETRY');
+    const credential = await this.credentials.metadata();
+    if (
+      !row ||
+      row.status !== 'FAILED' ||
+      row.provider !== 'ADDLIVETAG' ||
+      row.accountId !== credential?.accountId
+    )
+      throw new ConflictException('ONLY_ACTIVE_ACCOUNT_FAILED_BATCH_CAN_RETRY');
     return this.enqueue(row.startDate, row.endDate, 'RETRY', actor);
   }
   @Cron('0 10 * * * *', { timeZone: 'Asia/Ho_Chi_Minh' })
   async hourly() {
-    if (this.config.get<boolean>('RECONCILIATION_ENABLED')) await this.enqueue(vietnamDate(6), vietnamDate(0), 'HOURLY');
+    if (this.config.get<boolean>('RECONCILIATION_ENABLED'))
+      await this.enqueue(vietnamDate(6), vietnamDate(0), 'HOURLY');
   }
   @Cron('0 15 2 * * *', { timeZone: 'Asia/Ho_Chi_Minh' })
   async nightly() {
-    if (this.config.get<boolean>('RECONCILIATION_ENABLED')) await this.enqueue(vietnamDate(89), vietnamDate(0), 'NIGHTLY');
+    if (this.config.get<boolean>('RECONCILIATION_ENABLED'))
+      await this.enqueue(vietnamDate(89), vietnamDate(0), 'NIGHTLY');
   }
   @Interval(5000)
   async work() {
     if (this.busy) return;
     this.busy = true;
-    let leased = false;
+    let leaseId: string | undefined;
     try {
-      leased = await this.repo.transaction(async tx => {
-        const lease = await tx.jobLease.findUnique({ where: { id: 'SAFFI_SYNC' } });
+      const batch = await this.repo.db.reconciliationBatch.findFirst({
+        where: { provider: 'ADDLIVETAG', status: { in: ['QUEUED', 'RUNNING'] } },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (!batch?.accountId) return;
+      const key = `ADDLIVETAG_SYNC:${batch.accountId}`;
+      const leased = await this.repo.transaction(async (tx) => {
+        const lease = await tx.jobLease.findUnique({ where: { id: key } });
         if (lease && lease.expiresAt > new Date()) return false;
-        await tx.jobLease.upsert({ where: { id: 'SAFFI_SYNC' }, create: { id: 'SAFFI_SYNC', owner: this.owner, expiresAt: new Date(Date.now() + 300000) },
-          update: { owner: this.owner, expiresAt: new Date(Date.now() + 300000) } });
-        // A RUNNING batch with no live lease belongs to a crashed/expired worker.
-        await tx.reconciliationBatch.updateMany({ where: { status: 'RUNNING' }, data: { status: 'FAILED', errorCode: 'WORKER_LEASE_EXPIRED', completedAt: new Date() } });
+        await tx.jobLease.upsert({
+          where: { id: key },
+          create: { id: key, owner: this.owner, expiresAt: new Date(Date.now() + 300000) },
+          update: { owner: this.owner, expiresAt: new Date(Date.now() + 300000) },
+        });
+        await tx.reconciliationBatch.updateMany({
+          where: { provider: 'ADDLIVETAG', accountId: batch.accountId, status: 'RUNNING' },
+          data: { status: 'FAILED', errorCode: 'WORKER_LEASE_EXPIRED', completedAt: new Date() },
+        });
         return true;
       });
       if (!leased) return;
-      const batch = await this.repo.db.reconciliationBatch.findFirst({ where: { status: 'QUEUED' }, orderBy: { createdAt: 'asc' } });
-      if (batch) await this.run(batch);
+      leaseId = key;
+      if (batch.status === 'QUEUED') await this.run(batch.id, key);
     } catch {
-      this.logger.error('RECONCILIATION_WORKER_FAILED');
+      this.logger.error({ event: 'reconciliation.worker.failed', provider: 'ADDLIVETAG' });
     } finally {
-      if (leased) await this.repo.db.jobLease.deleteMany({ where: { id: 'SAFFI_SYNC', owner: this.owner } }).catch(() => undefined);
+      if (leaseId)
+        await this.repo.db.jobLease
+          .deleteMany({ where: { id: leaseId, owner: this.owner } })
+          .catch(() => undefined);
       this.busy = false;
     }
   }
-  private async renew() {
-    const result = await this.repo.db.jobLease.updateMany({
-      where: { id: 'SAFFI_SYNC', owner: this.owner, expiresAt: { gt: new Date() } },
+  private async renew(id: string) {
+    const count = await this.repo.db.jobLease.updateMany({
+      where: { id, owner: this.owner, expiresAt: { gt: new Date() } },
       data: { expiresAt: new Date(Date.now() + 300000) },
     });
-    if (!result.count) throw new ProviderError('WORKER_LEASE_LOST');
+    if (!count.count) throw new ProviderError('WORKER_LEASE_LOST');
   }
-  private async run(batch: { id: string; startDate: string; endDate: string }) {
+  private async run(id: string, leaseId: string) {
     let version: number | undefined;
     try {
       const credential = await this.credentials.read();
       version = credential.version;
-      await this.repo.db.reconciliationBatch.update({ where: { id: batch.id }, data: { status: 'RUNNING', credentialVersion: version } });
-      const seen = new Set<string>();
-      let total: number | undefined;
-      let received = 0;
+      const batch = await this.repo.db.reconciliationBatch.findUniqueOrThrow({ where: { id } });
+      if (
+        batch.accountId !== credential.accountId ||
+        batch.credentialVersion !== version ||
+        batch.expectedAffiliate !== credential.expectedAffiliate
+      )
+        throw new ProviderError('CREDENTIAL_CHANGED');
+      await this.repo.db.reconciliationBatch.update({ where: { id }, data: { status: 'RUNNING' } });
+      const groups = new Map<string, ConversionItem[]>(),
+        seenPages = new Set<string>();
+      let total: number | undefined,
+        summary: string | undefined,
+        received = 0,
+        commission = 0n;
       for (let page = 1; page <= 10000; page++) {
-        await this.renew();
-        const response = await this.client.report(credential.cookie, batch.startDate, batch.endDate, page);
-        await this.renew();
+        await this.renew(leaseId);
+        const report = await this.client.report(
+          credential.apiKey,
+          credential.accountId,
+          batch.startDate,
+          batch.endDate,
+          page,
+        );
+        await this.renew(leaseId);
         await this.credentials.mark(version, 'ACTIVE');
-        if (total !== undefined && total !== response.report.total_count) throw new ProviderError('PAGINATION_TOTAL_CHANGED');
-        total = response.report.total_count;
-        const raw = sanitize(response.raw);
-        await this.repo.db.reconciliationPage.create({ data: { batchId: batch.id, page,
-          hash: createHash('sha256').update(JSON.stringify(raw)).digest('hex'), payload: json(raw) } });
-        for (const candidate of response.report.list) {
-          const parsed = checkoutSchema.safeParse(candidate);
-          if (!parsed.success) {
-            await this.repo.db.reconciliationIssue.create({ data: { batchId: batch.id, type: 'INVALID_PROVIDER_PAYLOAD',
-              payload: json({ fields: parsed.error.issues.map(i => i.path.join('.')) }) } });
-            await this.repo.db.reconciliationBatch.update({ where: { id: batch.id }, data: { failedRecords: { increment: 1 } } });
-            continue;
+        const currentSummary = JSON.stringify(report.summary);
+        if (total !== undefined && (total !== report.meta.total || summary !== currentSummary))
+          throw new ProviderError('PAGINATION_TOTAL_CHANGED');
+        total = report.meta.total;
+        summary = currentSummary;
+        const hash = createHash('sha256').update(JSON.stringify(report.data)).digest('hex');
+        if (report.data.length && seenPages.has(hash)) throw new ProviderError('DUPLICATE_PAGE');
+        seenPages.add(hash);
+        await this.repo.transaction(async (tx) => {
+          await tx.reconciliationPage.create({
+            data: { batchId: id, page, hash, payload: json(report) },
+          });
+          for (const [position, row] of report.data.entries()) {
+            const localDate = new Date(row.purchase_time * 1000 + 7 * 3600000)
+              .toISOString()
+              .slice(0, 10);
+            if (localDate < batch.startDate || localDate > batch.endDate)
+              throw new ProviderError('ROW_OUTSIDE_DATE_RANGE');
+            await tx.conversionItemSnapshot.create({
+              data: {
+                batchId: id,
+                page,
+                position,
+                checkoutId: row.checkout_id,
+                orderSn: row.order_sn,
+                payload: json(row),
+              },
+            });
           }
-          if (seen.has(parsed.data.checkout_id)) throw new ProviderError('DUPLICATE_CHECKOUT_IN_PAGINATION');
-          seen.add(parsed.data.checkout_id);
-          await this.renew();
-          try {
-            await this.engine.ingest(batch.id, parsed.data);
-            await this.repo.db.reconciliationBatch.update({ where: { id: batch.id }, data: { records: { increment: 1 } } });
-          } catch {
-            await this.repo.db.reconciliationIssue.create({ data: { batchId: batch.id,
-              checkoutId: parsed.data.checkout_id, type: 'RECORD_PERSIST_FAILED', payload: {} } });
-            await this.repo.db.reconciliationBatch.update({ where: { id: batch.id }, data: { failedRecords: { increment: 1 } } });
-          }
+          await tx.reconciliationBatch.update({
+            where: { id },
+            data: { pages: page, summary: json(report.summary) },
+          });
+        });
+        for (const row of report.data) {
+          const group = groups.get(row.checkout_id) ?? [];
+          group.push(row);
+          groups.set(row.checkout_id, group);
+          commission += BigInt(row.commission);
         }
-        received += response.report.list.length;
-        await this.repo.db.reconciliationBatch.update({ where: { id: batch.id }, data: { pages: page } });
-        if (received >= total) break;
-        if (!response.report.list.length || page === 10000) throw new ProviderError('INCOMPLETE_PAGINATION');
+        received += report.data.length;
+        if (received > total) throw new ProviderError('PAGINATION_COUNT_MISMATCH');
+        if (received === total) {
+          if (commission !== BigInt(report.summary.estimated_total_commission))
+            throw new ProviderError('SUMMARY_COMMISSION_MISMATCH');
+          break;
+        }
+        if (!report.data.length || page === 10000) throw new ProviderError('INCOMPLETE_PAGINATION');
       }
-      const current = await this.repo.db.reconciliationBatch.findUniqueOrThrow({ where: { id: batch.id } });
-      await this.repo.db.reconciliationBatch.update({ where: { id: batch.id }, data: {
-        status: current.failedRecords ? 'FAILED' : 'COMPLETED', completedAt: new Date(),
-        errorCode: current.failedRecords ? 'BATCH_CONTAINS_FAILED_RECORDS' : null,
-      } });
+      await this.renew(leaseId);
+      // Publish the complete validated batch atomically. Failed batches never partially credit/update.
+      await this.repo.transaction(async (tx) => {
+        const lease = await tx.jobLease.findUniqueOrThrow({ where: { id: leaseId } });
+        if (lease.owner !== this.owner || lease.expiresAt <= new Date())
+          throw new ProviderError('WORKER_LEASE_LOST');
+        await this.engine.publish(
+          tx,
+          {
+            id,
+            accountId: credential.accountId,
+            expectedAffiliate: credential.expectedAffiliate,
+            credentialVersion: version!,
+          },
+          groups,
+        );
+        await tx.reconciliationBatch.update({
+          where: { id },
+          data: { status: 'COMPLETED', records: received, completedAt: new Date() },
+        });
+      });
+      this.logger.log({
+        event: 'reconciliation.batch.completed',
+        batchId: id,
+        provider: 'ADDLIVETAG',
+        records: received,
+      });
     } catch (error) {
       const code = error instanceof ProviderError ? error.code : 'RECONCILIATION_FAILED';
-      if (code === 'PROVIDER_AUTH_EXPIRED' && version !== undefined) await this.credentials.mark(version, 'EXPIRED');
-      await this.repo.db.reconciliationBatch.update({ where: { id: batch.id }, data: { status: 'FAILED', errorCode: code, completedAt: new Date() } });
+      if (code === 'PROVIDER_AUTH_EXPIRED' && version !== undefined)
+        await this.credentials.mark(version, 'EXPIRED');
+      await this.repo.db.reconciliationBatch.update({
+        where: { id },
+        data: { status: 'FAILED', failedRecords: 1, errorCode: code, completedAt: new Date() },
+      });
+      this.logger.error({
+        event: 'reconciliation.batch.failed',
+        batchId: id,
+        provider: 'ADDLIVETAG',
+        code,
+      });
     }
   }
 }
