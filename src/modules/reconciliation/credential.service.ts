@@ -32,7 +32,10 @@ export class CredentialService {
     private readonly crypto?: FinanceCrypto,
   ) {}
   shopeeMetadata() {
-    return this.repo.db.providerCredential.findUnique({ where: { id: 'SHOPEE' }, select: shopeeSelect });
+    return this.repo.db.providerCredential.findUnique({
+      where: { id: 'SHOPEE' },
+      select: shopeeSelect,
+    });
   }
   rotateShopee(cookie: string, actor: string) {
     if (!this.crypto) throw new ServiceUnavailableException('CRYPTO_SERVICE_NOT_CONFIGURED');

@@ -6,7 +6,7 @@ import { AffiliateLinkStatus, ConvertOrigin } from '../../../common/domain/enums
 export class ListAffiliateLinksQueryDto {
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
   @IsOptional()
-  @IsIn(['asc','desc'])
+  @IsIn(['asc', 'desc'])
   sort?: 'asc' | 'desc';
 
   @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
