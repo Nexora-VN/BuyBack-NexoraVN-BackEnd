@@ -42,6 +42,8 @@ export interface UpdateUserData {
 }
 
 export interface FindUsersOptions {
+  status?: 'ACTIVE' | 'DISABLED';
+  sort?: 'asc' | 'desc';
   skip: number;
   take: number;
   search?: string;

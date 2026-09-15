@@ -24,7 +24,7 @@ export class PrismaUsersRepository extends UsersRepository {
   async findMany(options: FindUsersOptions): Promise<FindUsersResult> {
     const where: UserWhereInput = options.search
       ? {
-          status: { not: UserStatus.DELETED },
+          status: options.status ?? { not: UserStatus.DELETED },
           OR: [
             { email: { contains: options.search, mode: 'insensitive' } },
             { phoneNumber: { contains: options.search } },
@@ -32,13 +32,13 @@ export class PrismaUsersRepository extends UsersRepository {
             { fullName: { contains: options.search, mode: 'insensitive' } },
           ],
         }
-      : { status: { not: UserStatus.DELETED } };
+      : { status: options.status ?? { not: UserStatus.DELETED } };
     const [items, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
         skip: options.skip,
         take: options.take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: options.sort ?? 'desc' },
       }),
       this.prisma.user.count({ where }),
     ]);

@@ -112,7 +112,7 @@ export class PrismaAffiliateRepository extends AffiliateRepository {
         where,
         skip: options.skip,
         take: options.take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: options.sort ?? 'desc' },
       }),
       this.prisma.affiliateLink.count({ where }),
     ]);

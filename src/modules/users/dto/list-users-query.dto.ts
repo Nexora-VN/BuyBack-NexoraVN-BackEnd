@@ -1,8 +1,18 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class ListUsersQueryDto {
+  @ApiPropertyOptional({ enum: ['ACTIVE','DISABLED'] })
+  @IsOptional()
+  @IsIn(['ACTIVE','DISABLED'])
+  status?: 'ACTIVE' | 'DISABLED';
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
+  @IsOptional()
+  @IsIn(['asc','desc'])
+  sort?: 'asc' | 'desc';
+
   @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
