@@ -1,3 +1,4 @@
+import { commissionPaymentState, paymentBlockers } from './commission-status.js';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import type { z } from 'zod';
@@ -7,9 +8,14 @@ import { parseAttribution, splitCashback } from '../finance/domain/money.js';
 import { providerScope, type ConversionItem, type reviewInput } from './addlivetag.contract.js';
 
 export function checkoutDigest(rows: ConversionItem[]) {
-  return createHash('sha256')
-    .update(JSON.stringify(rows.map((r) => JSON.stringify(r)).sort()))
-    .digest('hex');
+  return (
+    createHash('sha256')
+      // Version the interpretation so unchanged snapshots are reprocessed after this fix.
+      .update('commission-payment-v2:')
+      .update(process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES ?? '')
+      .update(JSON.stringify(rows.map((r) => JSON.stringify(r)).sort()))
+      .digest('hex')
+  );
 }
 export function inspectCheckout(rows: ConversionItem[]) {
   const issues = new Set<string>(),
@@ -22,6 +28,13 @@ export function inspectCheckout(rows: ConversionItem[]) {
         : states.has('cancelled')
           ? 'REJECTED'
           : 'MANUAL_REVIEW';
+  if (
+    rows.some(
+      (r) =>
+        r.status_code === 'completed' && commissionPaymentState(r.commission_status) === 'UNKNOWN',
+    )
+  )
+    issues.add('UNKNOWN_COMMISSION_STATUS');
   if (conversion === 'PARTIALLY_VALIDATED') issues.add('PARTIAL_CHECKOUT_REVIEW');
   if (rows.some((r) => !['completed', 'cancelled'].includes(r.status_code)))
     issues.add('UNKNOWN_PROVIDER_STATUS');
@@ -101,6 +114,21 @@ export class AddLiveTagEngine {
         include: { commission: { include: { cashback: true } } },
       });
       if (existing?.sourceHash === sourceHash) continue;
+      // Old issues refer to an obsolete revision; regenerate issues from the new snapshot.
+      // Otherwise a corrected import can remain blocked by an issue that cannot be reviewed.
+      await tx.reconciliationIssue.updateMany({
+        where: {
+          provider,
+          checkoutId: externalId,
+          status: 'OPEN',
+          sourceHash: { not: sourceHash },
+        },
+        data: {
+          status: 'RESOLVED',
+          resolution: 'Superseded by a newer reconciliation snapshot',
+          resolvedAt: new Date(),
+        },
+      });
       const previous = existing?.commission;
       if (previous?.userId && userId !== previous.userId) {
         issues.add('ATTRIBUTION_CHANGED');
@@ -126,6 +154,8 @@ export class AddLiveTagEngine {
           purchasedAt: new Date(rows[0]!.purchase_time * 1000),
         },
         update: {
+          utmContent: rows[0]!.utm,
+          purchasedAt: new Date(rows[0]!.purchase_time * 1000),
           conversionState: issues.size ? 'MANUAL_REVIEW' : conversion,
           rawStatus: conversion,
           netRaw: amount,
@@ -156,7 +186,11 @@ export class AddLiveTagEngine {
           ? 'MANUAL_REVIEW'
           : conversion === 'REJECTED'
             ? 'REJECTED'
-            : 'VALIDATED';
+            : rows.every((r) => commissionPaymentState(r.commission_status) === 'REJECTED')
+              ? 'REJECTED'
+              : paymentBlockers(rows).length
+                ? 'ESTIMATED'
+                : 'VALIDATED';
         const c = await tx.commission.upsert({
           where: { checkoutId: checkout.id },
           create: {
@@ -187,14 +221,7 @@ export class AddLiveTagEngine {
       } else if (
         previous.state === 'PAID' &&
         conversion === 'REJECTED' &&
-        ![
-          'AFFILIATE_ACCOUNT_MISMATCH',
-          'INVALID_ATTRIBUTION',
-          'ATTRIBUTION_CHANGED',
-          'CANCELLED_WITH_COMMISSION',
-          'AMBIGUOUS_ITEM_IDENTITY',
-          'ACCOUNT_UNIT_UNVERIFIED',
-        ].some((i) => issues.has(i))
+        [...issues].every((issue) => issue === 'PAID_COMMISSION_CHANGED')
       ) {
         if (previous.userId && previous.cashback)
           await this.wallet.post(tx, {
@@ -239,7 +266,8 @@ export class AddLiveTagEngine {
     state: 'PENDING' | 'VALIDATED' | 'REJECTED',
   ) {
     await tx.affiliatePolicy.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-    const split = splitCashback(amount);
+    const existing = await tx.cashbackAllocation.findUnique({ where: { commissionId } });
+    const split = splitCashback(amount, BigInt(existing?.userBps ?? 8500));
     await tx.cashbackAllocation.upsert({
       where: { commissionId },
       create: {
@@ -263,6 +291,7 @@ export class AddLiveTagEngine {
       });
       if (checkout.revision !== input.revision || checkout.sourceHash !== issue.sourceHash)
         throw new ConflictException('SOURCE_CHANGED_RESYNC_REQUIRED');
+      if (issue.status === 'RESOLVED') throw new ConflictException('ISSUE_ALREADY_RESOLVED');
       const c = checkout.commission;
       if (!c || ['PAID', 'REVERSED'].includes(c.state))
         throw new ConflictException('USE_AUDITED_WALLET_ADJUSTMENT');
@@ -301,7 +330,7 @@ export class AddLiveTagEngine {
             },
           })
         )
-          throw new ConflictException('LEGACY_COMMISSION_MUST_BE_EXCLUDED_FIRST');
+          throw new ConflictException('DUPLICATE_COMMISSION_MUST_BE_EXCLUDED_FIRST');
         if (!input.affiliateLinkId || input.acceptedAmountVnd === undefined)
           throw new ConflictException('ATTRIBUTION_AND_AMOUNT_REQUIRED');
         const link = await tx.affiliateLink.findUniqueOrThrow({
@@ -309,19 +338,32 @@ export class AddLiveTagEngine {
         });
         if (link.deleteAt || (c.userId && c.userId !== link.userId))
           throw new ConflictException('ATTRIBUTION_CONFLICT');
+        // A manual attribution review must not turn pending provider money into payable money.
+        const blockers = paymentBlockers(rows);
+        const state = blockers.length ? 'ESTIMATED' : 'VALIDATED';
+        if (
+          rows.some(
+            (r) =>
+              r.status_code === 'completed' &&
+              commissionPaymentState(r.commission_status) === 'REJECTED',
+          )
+        )
+          throw new ConflictException('PROVIDER_COMMISSION_REJECTED');
+        if (blockers.some((blocker) => blocker !== 'PROVIDER_COMMISSION_PENDING'))
+          throw new ConflictException('PROVIDER_COMMISSION_NOT_VERIFIED');
         const amount = BigInt(input.acceptedAmountVnd);
         if (amount > checkout.netRaw)
           throw new ConflictException('ACCEPTED_AMOUNT_EXCEEDS_REPORTED');
         await tx.commission.update({
           where: { id: c.id },
           data: {
-            state: 'VALIDATED',
+            state,
             userId: link.userId,
             affiliateLinkId: link.id,
             estimatedVnd: amount,
           },
         });
-        await this.cashback(tx, c.id, amount, 'VALIDATED');
+        await this.cashback(tx, c.id, amount, state === 'VALIDATED' ? 'VALIDATED' : 'PENDING');
       }
       await tx.reconciliationIssue.updateMany({
         where: { provider: checkout.provider, checkoutId: checkout.checkoutId, status: 'OPEN' },

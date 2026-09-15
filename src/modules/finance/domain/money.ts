@@ -1,4 +1,3 @@
-export const RAW_SCALE = 100000n;
 export const USER_BPS = 8500n;
 
 export function integer(value: unknown): bigint {

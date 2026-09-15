@@ -1,6 +1,6 @@
 # BuyBack NexoraVN Backend
 
-NestJS backend foundation for the BuyBack affiliate cashback project. The current scope is intentionally small: project infrastructure, JWT authentication/authorization, and an admin-only Users CRUD. Affiliate links, Saffi reconciliation, cashback, wallet, and withdrawals are not implemented yet.
+NestJS backend foundation for the BuyBack affiliate cashback project. The current scope is intentionally small: project infrastructure, JWT authentication/authorization, and an admin-only Users CRUD. Affiliate links, AddLiveTag reconciliation, cashback, wallet, and withdrawals are not implemented yet.
 
 ## Stack
 
@@ -93,7 +93,7 @@ src/
 ## Deferred intentionally
 
 - Shopee URL resolution and affiliate link generation
-- Saffi API integration and reconciliation
+- AddLiveTag API integration and reconciliation
 - Commission/cashback calculation
 - Wallet ledger and withdrawal processing
 - Redis, queues, file imports, and payment integrations

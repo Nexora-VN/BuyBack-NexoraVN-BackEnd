@@ -1,3 +1,4 @@
+import { paymentBlockers } from '../reconciliation/commission-status.js';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FinanceRepository } from './finance.repository.js';
@@ -321,7 +322,7 @@ export class FinanceQueryService {
         : await this.repo.db.reconciliationIssue.findMany({
             where: { provider: row.provider, checkoutId: row.checkout.checkoutId, status: 'OPEN' },
           });
-      const blockers: string[] = [];
+      const blockers: string[] = paymentBlockers(row.checkout.payload);
       if (!userId) {
         const credential = await this.repo.db.providerCredential.findUnique({
           where: { id: 'ADDLIVETAG' },
@@ -424,7 +425,7 @@ export class FinanceQueryService {
     return { orders, commissions, wallet };
   }
   async health() {
-    const [credential, latestBatch, openIssues, running, failed, ledger, cached] =
+    const [credential, shopeeCredential, latestBatch, openIssues, running, failed, ledger, cached] =
       await Promise.all([
         this.repo.db.providerCredential.findUnique({
           where: { id: 'ADDLIVETAG' },
@@ -435,6 +436,15 @@ export class FinanceQueryService {
             expectedAffiliate: true,
             verifiedAt: true,
             lastValidatedAt: true,
+          },
+        }),
+        this.repo.db.providerCredential.findUnique({
+          where: { id: 'SHOPEE' },
+          select: {
+            status: true,
+            version: true,
+            lastValidatedAt: true,
+            updatedAt: true,
           },
         }),
         this.repo.db.reconciliationBatch.findFirst({
@@ -456,6 +466,7 @@ export class FinanceQueryService {
     return {
       provider: 'ADDLIVETAG',
       credential,
+      shopeeCredential,
       latestBatch,
       openIssues,
       queuedOrRunning: running,

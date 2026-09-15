@@ -4,14 +4,14 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import { bootstrap } from '../src/main.js';
 import { PrismaService } from '../src/infrastructure/database/prisma/prisma.service.js';
-import { ReconciliationEngine } from '../src/modules/reconciliation/reconciliation-engine.js';
+import { AddLiveTagEngine } from '../src/modules/reconciliation/addlivetag-engine.js';
 import { ReconciliationService } from '../src/modules/reconciliation/reconciliation.service.js';
-import { checkoutSchema, decodeProvider } from '../src/modules/reconciliation/saffi.contract.js';
+import type { ConversionItem } from '../src/modules/reconciliation/addlivetag.contract.js';
 import { AddLiveTagClient } from '../src/modules/reconciliation/addlivetag.client.js';
 import { ConfigService } from '@nestjs/config';
 
 describe('Affiliate finance end-to-end', () => {
-  let app: NestFastifyApplication, db: PrismaService, engine: ReconciliationEngine;
+  let app: NestFastifyApplication, db: PrismaService, engine: AddLiveTagEngine;
   let userId: string,
     otherId: string,
     adminId: string,
@@ -48,65 +48,57 @@ describe('Affiliate finance end-to-end', () => {
           .send(body),
     };
   }
-  function report(status: 1 | 2 | 3, overrides: Record<string, unknown> = {}) {
-    const zero = status === 3;
-    return checkoutSchema.parse(
-      decodeProvider(
-        JSON.stringify({
-          checkout_id: prefix,
-          affiliate_id: '17303170528',
-          utm_content: [
-            userId.replaceAll('-', ''),
-            linkId.replaceAll('-', ''),
-            'web',
-            'bb_' + 'a'.repeat(32),
-            productId.replaceAll('-', ''),
-          ].join('-'),
-          purchase_time: '1787285585',
-          checkout_status:
-            status === 2 ? 'Waiting for payment' : status === 3 ? 'Invalid' : 'Pending',
-          conversion_status: String(status),
-          affiliate_net_commission: zero ? '0' : '10000000000',
-          estimated_total_commission: zero ? '0' : '10000000000',
-          gross_commission: zero ? '0' : '10000000000',
-          capped_commission: zero ? '0' : '10000000000',
-          total_brand_commission: '0',
-          orders: [
-            {
-              order_id: prefix,
-              order_sn: prefix,
-              affiliate_transaction_id: prefix,
-              order_status: status === 2 ? 'COMPLETED' : status === 3 ? 'CANCEL' : 'PAID',
-              display_order_status: String(status),
-              items: [
-                {
-                  item_id: '26771994719',
-                  shop_id: '46182105',
-                  model_id: '1',
-                  promotion_id: '',
-                  item_name: 'Test product',
-                  display_item_status:
-                    status === 2 ? 'Completed' : status === 3 ? 'Cancelled' : 'Pending',
-                  affiliate_item_status: String(status),
-                  is_fraud: '0',
-                  fraud_status: '2',
-                  item_price: '100000000000',
-                  actual_amount: zero ? '0' : '100000000000',
-                  refunded_amount: zero ? '100000000000' : '0',
-                  item_commission: zero ? '0' : '10000000000',
-                  capped_brand_commission: '0',
-                  brand_commission_rate: '0',
-                  platform_commission_rate: '10000',
-                },
-              ],
-            },
-          ],
-          ...overrides,
-        }),
+  function report(status: 2 | 3, overrides: Partial<ConversionItem> = {}): ConversionItem {
+    const cancelled = status === 3;
+    return {
+      checkout_id: prefix,
+      order_sn: prefix,
+      affiliate: 'affiliate-test',
+      utm: [
+        userId.replaceAll('-', ''),
+        linkId.replaceAll('-', ''),
+        'web',
+        'bb_' + 'a'.repeat(32),
+        productId.replaceAll('-', ''),
+      ].join('-'),
+      sub_id1: userId.replaceAll('-', ''),
+      purchase_time: 1787285585,
+      click_time: 1787285500,
+      status: cancelled ? 'Cancelled' : 'Completed',
+      status_code: cancelled ? 'cancelled' : 'completed',
+      commission_status: 'TEST_VERIFIED_PAID',
+      item_name: 'Test product',
+      image: '',
+      item_url: 'https://shopee.vn/product?item_id=26771994719',
+      price: '1000000',
+      qty: 1,
+      order_value: cancelled ? '0' : '1000000',
+      commission: cancelled ? '0' : '100000',
+      mcn_fee: '0',
+      ...overrides,
+    };
+  }
+  async function publish(row: ConversionItem) {
+    const credential = await db.providerCredential.findUniqueOrThrow({
+      where: { id: 'ADDLIVETAG' },
+    });
+    await db.$transaction((tx) =>
+      engine.publish(
+        tx,
+        {
+          id: batchId,
+          accountId: '420',
+          expectedAffiliate: 'affiliate-test',
+          credentialVersion: credential.version,
+        },
+        new Map([[row.checkout_id, [row]]]),
       ),
     );
   }
+  const originalPaidLabels = process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES;
   beforeAll(async () => {
+    // Synthetic payout label for settlement tests; not a claimed AddLiveTag status.
+    process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES = 'TEST_VERIFIED_PAID';
     process.env.SHOPEE_AFFILIATE_ID = '17303170528';
     process.env.FINANCE_ENCRYPTION_KEY = 'b'.repeat(64);
     process.env.SETTLEMENT_ENABLED = 'true';
@@ -121,7 +113,7 @@ describe('Affiliate finance end-to-end', () => {
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
     db = app.get(PrismaService);
-    engine = app.get(ReconciliationEngine);
+    engine = app.get(AddLiveTagEngine);
     const hash = await argon2.hash('finance-test-password');
     const roles = ['USER', 'USER', 'ADMIN', 'SUPER_ADMIN'] as const;
     for (const [index, role] of roles.entries()) {
@@ -201,6 +193,8 @@ describe('Affiliate finance end-to-end', () => {
           startDate: '2026-08-01',
           endDate: '2026-08-31',
           source: 'TEST',
+          provider: 'ADDLIVETAG',
+          accountId: '420',
           status: 'COMPLETED',
         },
       })
@@ -208,6 +202,8 @@ describe('Affiliate finance end-to-end', () => {
     mockIds.push(batchId);
   }, 30000);
   afterAll(async () => {
+    if (originalPaidLabels === undefined) delete process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES;
+    else process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES = originalPaidLabels;
     jest.restoreAllMocks();
     if (db) {
       const checkouts = await db.providerCheckout.findMany({
@@ -296,8 +292,17 @@ describe('Affiliate finance end-to-end', () => {
     expect(
       (await db.reconciliationBatch.findUniqueOrThrow({ where: { id: queued.id } })).status,
     ).toBe('COMPLETED');
-    await engine.ingest(batchId, parsed);
-    await engine.ingest(batchId, parsed);
+    const credential = await db.providerCredential.findUniqueOrThrow({
+      where: { id: 'ADDLIVETAG' },
+    });
+    await api(superToken)
+      .post('admin/provider-credential/verify', {
+        version: credential.version,
+        evidence: 'Test account and integer VND verified',
+      })
+      .expect(201);
+    await publish(parsed);
+    await publish(parsed);
     const c = await db.commission.findFirstOrThrow({ where: { checkout: { checkoutId: prefix } } });
     commissionId = c.id;
     expect(c.state).toBe('VALIDATED');
@@ -306,20 +311,12 @@ describe('Affiliate finance end-to-end', () => {
       available: '0',
     });
   });
-  it('blocks unattributed and affiliate-mismatched conversions from settlement', async () => {
-    await engine.ingest(
-      batchId,
+  it('blocks unattributed conversions from settlement', async () => {
+    await publish(
       report(2, {
         checkout_id: prefix + 'unattributed',
-        utm_content: '----',
-        orders: [
-          {
-            ...report(2).orders[0],
-            order_id: prefix + 'u',
-            order_sn: prefix + 'u',
-            affiliate_transaction_id: prefix + 'u',
-          },
-        ],
+        order_sn: prefix + 'u',
+        utm: '----',
       }),
     );
     const c = await db.commission.findFirstOrThrow({
@@ -449,8 +446,8 @@ describe('Affiliate finance end-to-end', () => {
         transferReference: prefix + 'bank',
       })
       .expect(200);
-    await engine.ingest(batchId, report(3));
-    await engine.ingest(batchId, report(3));
+    await publish(report(3));
+    await publish(report(3));
     const wallet = await db.wallet.findUniqueOrThrow({ where: { userId } });
     expect(wallet.available).toBe(-50000n);
     expect(wallet.reserved).toBe(0n);

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { setTimeout as delay } from 'node:timers/promises';
 import { decodeAddLiveTag } from './addlivetag.contract.js';
-import { ProviderError } from './saffi.client.js';
+import { ProviderError } from './provider-error.js';
 
 @Injectable()
 export class AddLiveTagClient {

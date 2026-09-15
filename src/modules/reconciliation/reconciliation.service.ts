@@ -4,7 +4,7 @@ import { Cron, Interval } from '@nestjs/schedule';
 import { createHash, randomUUID } from 'node:crypto';
 import { FinanceRepository, audit, json } from '../finance/finance.repository.js';
 import { CredentialService } from './credential.service.js';
-import { ProviderError } from './saffi.client.js';
+import { ProviderError } from './provider-error.js';
 import { AddLiveTagClient } from './addlivetag.client.js';
 import { AddLiveTagEngine } from './addlivetag-engine.js';
 import { splitDateRange, type ConversionItem } from './addlivetag.contract.js';

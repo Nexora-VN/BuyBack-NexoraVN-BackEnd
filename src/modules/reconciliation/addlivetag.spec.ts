@@ -10,7 +10,6 @@ import { AddLiveTagClient } from './addlivetag.client.js';
 import type { ConfigService } from '@nestjs/config';
 import type { ConversionItem } from './addlivetag.contract.js';
 import { SettlementService } from '../finance/settlement.service.js';
-import { CredentialService } from './credential.service.js';
 import type { FinanceRepository, Tx } from '../finance/finance.repository.js';
 import type { WalletService } from '../finance/wallet.service.js';
 
@@ -305,6 +304,7 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
         upsert: jest.fn().mockResolvedValue({ id: 1 }),
       },
       cashbackAllocation: {
+        findUnique: jest.fn().mockResolvedValue(null),
         upsert: jest.fn().mockResolvedValue({ id: 'cashback-uuid-1' }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -345,7 +345,7 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
     engine = new AddLiveTagEngine(mockRepo, mockWallet);
   });
 
-  it('validates a correct conversion without crediting wallet (commission VALIDATED, wallet untouched)', async () => {
+  it('keeps completed but unpaid conversions ESTIMATED and cashback PENDING', async () => {
     const row = makeRow();
     const groups = new Map([['chk-test-1', [row]]]);
 
@@ -355,11 +355,11 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
       groups,
     );
 
-    // Commission created with VALIDATED and integer VND amount 2500
+    // Commission created with ESTIMATED and integer VND amount 2500
     expect(mockTx.commission.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
-          state: 'VALIDATED',
+          state: 'ESTIMATED',
           rawAmount: 2500n,
           scale: 1,
           estimatedVnd: 2500n,
@@ -374,7 +374,7 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
         create: expect.objectContaining({
           userAmount: 2125n,
           platformAmount: 375n,
-          state: 'VALIDATED',
+          state: 'PENDING',
         }),
       }),
     );
@@ -382,6 +382,59 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
     // Wallet is NOT credited on ingest! (Only credited upon settlement confirm)
     expect(mockWallet.post).not.toHaveBeenCalled();
     expect(mockTx.reconciliationIssue.create).not.toHaveBeenCalled();
+  });
+
+  it('imports the six-row user sample: app cancellation attributed, legacy rows unassigned, no credit', async () => {
+    // Financial/tracking fields match the supplied sample; names shortened and images omitted.
+    const report = decodeAddLiveTag(
+      readFileSync('test/fixtures/addlivetag-six-items.json', 'utf8'),
+    );
+    mockTx.affiliateLink.findUnique.mockResolvedValue({
+      id: 'a4c6ed0f-8d2a-4ba9-b5ec-1511829eb1bb',
+      userId: 'ecccac07-1e75-4c88-81c9-ba72f44d123e',
+      productId: '73ff3455-0132-4d3e-bb36-c016dbbc23be',
+      subId1: 'ecccac071e754c8881c9ba72f44d123e',
+      subId2: 'a4c6ed0f8d2a4ba9b5ec1511829eb1bb',
+      subId3: 'web',
+      subId4: 'bb_64e0ab26775242f6801dfb8e729771a0',
+      subId5: '73ff345501324d3ebb36c016dbbc23be',
+      deleteAt: null,
+    });
+    await engine.publish(
+      mockTx as unknown as Tx,
+      { id: 'sample', accountId, expectedAffiliate: 'theanh.nguyen2039', credentialVersion: 1 },
+      new Map(report.data.map((row) => [row.checkout_id, [row]])),
+    );
+    expect(report.summary.gross_commission).toBe('1983');
+    expect(report.data.reduce((sum, row) => sum + BigInt(row.commission), 0n)).toBe(4913n);
+    expect(mockTx.commission.upsert.mock.calls[0][0].create).toMatchObject({
+      userId: 'ecccac07-1e75-4c88-81c9-ba72f44d123e',
+      state: 'REJECTED',
+      estimatedVnd: 0n,
+    });
+    for (const [call] of mockTx.commission.upsert.mock.calls.slice(1)) {
+      expect(call.create).toMatchObject({ userId: null, state: 'MANUAL_REVIEW' });
+    }
+    expect(mockTx.cashbackAllocation.upsert).toHaveBeenCalledTimes(1);
+    expect(mockTx.cashbackAllocation.upsert.mock.calls[0][0].create).toMatchObject({
+      state: 'REJECTED',
+      userAmount: 0n,
+      platformAmount: 0n,
+    });
+    expect(mockWallet.post).not.toHaveBeenCalled();
+  });
+
+  it('preserves the cashback percentage snapshot on later imports', async () => {
+    mockTx.cashbackAllocation.findUnique.mockResolvedValue({ userBps: 7000 });
+    await engine.publish(
+      mockTx as unknown as Tx,
+      { id: 'sample', accountId, expectedAffiliate, credentialVersion: 1 },
+      new Map([['chk-test-1', [makeRow()]]]),
+    );
+    expect(mockTx.cashbackAllocation.upsert.mock.calls[0][0].update).toMatchObject({
+      userAmount: 1750n,
+      platformAmount: 750n,
+    });
   });
 
   it('flags demo rows with utm="----" as INVALID_ATTRIBUTION and MANUAL_REVIEW without crediting wallet', async () => {
@@ -614,7 +667,7 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
     );
   });
 
-  it('supports structured review APPROVE with evidence, updating commission to VALIDATED with accepted amount', async () => {
+  it('allows attribution review while keeping unpaid commission ESTIMATED', async () => {
     mockTx.reconciliationIssue.findUnique.mockResolvedValue({
       id: 'issue-1',
       provider,
@@ -651,7 +704,7 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
       expect.objectContaining({
         where: { id: 'comm-1' },
         data: expect.objectContaining({
-          state: 'VALIDATED',
+          state: 'ESTIMATED',
           estimatedVnd: 2500n,
         }),
       }),
@@ -733,7 +786,7 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
     ).rejects.toThrow('SOURCE_CHANGED_RESYNC_REQUIRED');
   });
 
-  it('rejects APPROVE if legacy Saffi commission duplicate exists without being excluded first', async () => {
+  it('rejects APPROVE if commission duplicate from another AddLiveTag account exists without being excluded first', async () => {
     mockTx.reconciliationIssue.findUnique.mockResolvedValue({
       id: 'issue-1',
       provider,
@@ -752,8 +805,11 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
       payload: [makeRow()],
       commission: { id: 'comm-1', state: 'MANUAL_REVIEW', userId: null },
     });
-    // Legacy duplicate found
-    mockTx.commission.findFirst.mockResolvedValue({ id: 'legacy-comm-1', state: 'VALIDATED' });
+    // Duplicate from another account found
+    mockTx.commission.findFirst.mockResolvedValue({
+      id: 'other-account-comm-1',
+      state: 'VALIDATED',
+    });
 
     await expect(
       engine.review(
@@ -767,7 +823,7 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
         },
         'admin',
       ),
-    ).rejects.toThrow('LEGACY_COMMISSION_MUST_BE_EXCLUDED_FIRST');
+    ).rejects.toThrow('DUPLICATE_COMMISSION_MUST_BE_EXCLUDED_FIRST');
   });
 
   it('supports EXCLUDE action, setting commission to REJECTED', async () => {
@@ -808,6 +864,17 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
 });
 
 describe('SettlementService & AddLiveTag Integration', () => {
+  const originalPaidLabels = process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES;
+  beforeEach(() => {
+    process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES = 'TEST_VERIFIED_PAID';
+  });
+  afterEach(() => {
+    if (originalPaidLabels === undefined) delete process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES;
+    else process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES = originalPaidLabels;
+  });
+  const paidPayload = [
+    { status_code: 'completed', commission_status: 'TEST_VERIFIED_PAID', commission: '2500' },
+  ];
   let settlements: SettlementService;
   let mockRepo: jest.Mocked<FinanceRepository>;
   let mockWallet: jest.Mocked<WalletService>;
@@ -837,12 +904,18 @@ describe('SettlementService & AddLiveTag Integration', () => {
             userId,
             rawAmount: 2500n,
             estimatedVnd: 2500n,
-            checkout: { provider, accountId, checkoutId: 'chk-1', revision: 1 },
+            checkout: {
+              provider,
+              accountId,
+              payload: paidPayload,
+              checkoutId: 'chk-1',
+              revision: 1,
+            },
             settlementItem: null,
             cashback: { userBps: 8500 },
           },
         ]),
-        findFirst: jest.fn().mockResolvedValue(null), // No legacy duplicates
+        findFirst: jest.fn().mockResolvedValue(null), // No duplicates from other accounts
         update: jest.fn().mockResolvedValue({ id: commissionId }),
       },
       reconciliationIssue: {
@@ -870,7 +943,13 @@ describe('SettlementService & AddLiveTag Integration', () => {
                 rawAmount: 2500n,
                 estimatedVnd: 2500n,
                 cashback: { userBps: 8500 },
-                checkout: { provider, accountId, checkoutId: 'chk-1', revision: 1 },
+                checkout: {
+                  provider,
+                  accountId,
+                  payload: paidPayload,
+                  checkoutId: 'chk-1',
+                  revision: 1,
+                },
               },
             },
           ],
@@ -904,6 +983,36 @@ describe('SettlementService & AddLiveTag Integration', () => {
     } as unknown as jest.Mocked<ConfigService>;
 
     settlements = new SettlementService(mockRepo, mockWallet, mockConfig);
+  });
+
+  it('blocks old VALIDATED commissions if the provider still reports pending payment', async () => {
+    const rows = await mockTx.commission.findMany();
+    rows[0].checkout.payload = [
+      { status_code: 'completed', commission_status: 'Chờ trả hoa hồng', commission: '2500' },
+    ];
+    await expect(
+      settlements.create(
+        {
+          reference: 'PENDING',
+          commissionIds: [commissionId],
+          grossVnd: '2500',
+          deductionVnd: '0',
+          netVnd: '2500',
+        },
+        'admin',
+      ),
+    ).rejects.toThrow('PROVIDER_COMMISSION_NOT_PAID');
+    expect(mockTx.settlementBatch.create).not.toHaveBeenCalled();
+  });
+  it('blocks confirmation of an old draft with unpaid source data', async () => {
+    const batch = await mockTx.settlementBatch.findUnique();
+    batch.items[0].commission.checkout.payload = [
+      { status_code: 'completed', commission_status: 'Chờ trả hoa hồng', commission: '2500' },
+    ];
+    await expect(settlements.confirm('settlement-uuid-1', 'admin')).rejects.toThrow(
+      'PROVIDER_COMMISSION_NOT_PAID',
+    );
+    expect(mockWallet.post).not.toHaveBeenCalled();
   });
 
   it('creates settlement draft matching exact estimatedVnd without 100000 division and snapshots revision', async () => {
@@ -992,8 +1101,33 @@ describe('SettlementService & AddLiveTag Integration', () => {
     ).rejects.toThrow('OPEN_RECONCILIATION_ISSUES');
   });
 
-  it('blocks settlement create if duplicate unexcluded legacy Saffi commission exists', async () => {
-    mockTx.commission.findFirst.mockResolvedValue({ id: 'legacy-comm-1' });
+  it('rejects settlement for a checkout outside AddLiveTag', async () => {
+    mockTx.commission.findMany.mockResolvedValue([
+      {
+        id: commissionId,
+        state: 'VALIDATED',
+        userId,
+        settlementItem: null,
+        checkout: { provider: 'UNSUPPORTED', accountId, checkoutId: 'chk-1' },
+      },
+    ]);
+    await expect(
+      settlements.create(
+        {
+          reference: 'SETTLE-UNSUPPORTED',
+          commissionIds: [commissionId],
+          grossVnd: '2500',
+          deductionVnd: '0',
+          netVnd: '2500',
+        },
+        'admin-id',
+      ),
+    ).rejects.toThrow('ADDLIVETAG_CHECKOUT_REQUIRED');
+    expect(mockTx.settlementBatch.create).not.toHaveBeenCalled();
+  });
+
+  it('blocks settlement create if unexcluded duplicate commission from another AddLiveTag account exists', async () => {
+    mockTx.commission.findFirst.mockResolvedValue({ id: 'other-account-comm-1' });
 
     await expect(
       settlements.create(
@@ -1056,7 +1190,13 @@ describe('SettlementService & AddLiveTag Integration', () => {
             rawAmount: 2500n,
             estimatedVnd: 2500n,
             cashback: { userBps: 8500 },
-            checkout: { provider, accountId, checkoutId: 'chk-1', revision: 2 }, // Checkout changed to revision 2!
+            checkout: {
+              provider,
+              accountId,
+              payload: paidPayload,
+              checkoutId: 'chk-1',
+              revision: 2,
+            }, // Checkout changed to revision 2!
           },
         },
       ],
@@ -1065,70 +1205,5 @@ describe('SettlementService & AddLiveTag Integration', () => {
     await expect(settlements.confirm('settlement-uuid-1', 'admin-id')).rejects.toThrow(
       'COMMISSION_REVISION_CHANGED',
     );
-  });
-
-  describe('Purge Saffi Data (Option A)', () => {
-    it('purges all Saffi records, resets test wallets, and records audit log', async () => {
-      const credTx: any = {
-        reconciliationIssue: { deleteMany: jest.fn().mockResolvedValue({ count: 5 }) },
-        providerCheckout: {
-          findMany: jest.fn().mockResolvedValue([{ id: 'chk-saffi-1' }]),
-          deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
-        },
-        commission: {
-          findMany: jest.fn().mockResolvedValue([{ id: 'comm-saffi-1' }]),
-          deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
-        },
-        settlementItem: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
-        settlementBatch: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
-        walletTransaction: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
-        wallet: { updateMany: jest.fn().mockResolvedValue({ count: 3 }) },
-        cashbackAllocation: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
-        providerOrder: {
-          findMany: jest.fn().mockResolvedValue([{ id: 'order-saffi-1' }]),
-          deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
-        },
-        providerOrderItem: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
-        reconciliationPage: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
-        reconciliationBatch: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
-        providerCredential: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
-        auditLog: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
-      };
-      const testRepo = {
-        transaction: jest
-          .fn()
-          .mockImplementation((fn: (tx: any) => Promise<unknown>) => fn(credTx)),
-      } as unknown as FinanceRepository;
-      const credService = new CredentialService(testRepo, {} as any);
-
-      const result = await credService.purgeSaffiData('super-admin-uuid');
-      expect(result.ok).toBe(true);
-      expect(result.summary).toEqual({
-        issues: 5,
-        settlementItems: 1,
-        emptySettlementBatches: 1,
-        walletTransactions: 2,
-        walletsReset: 3,
-        cashbacks: 1,
-        commissions: 1,
-        orderItems: 2,
-        orders: 1,
-        checkouts: 1,
-        batches: 1,
-        credentials: 1,
-      });
-      expect(credTx.reconciliationIssue.deleteMany).toHaveBeenCalledWith({
-        where: { OR: [{ provider: 'SAFFI' }, { provider: { startsWith: 'SAFFI:' } }] },
-      });
-      expect(credTx.wallet.updateMany).toHaveBeenCalledWith({
-        data: { available: 0n, reserved: 0n },
-      });
-      expect(credTx.auditLog.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          action: 'SAFFI_DATA_PURGED',
-          actorId: 'super-admin-uuid',
-        }),
-      });
-    });
   });
 });

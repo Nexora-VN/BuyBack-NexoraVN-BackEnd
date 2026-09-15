@@ -173,7 +173,7 @@ export class ProductService {
     };
   }
 
-  private toResponse(product: ProductRecord): ProductResponseDto {
+  toResponse(product: ProductRecord): ProductResponseDto {
     return {
       ...product,
       price: product.price.toString(),
