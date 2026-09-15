@@ -1,4 +1,7 @@
-import { providerSettlementBlockers, commissionSettlementBlockers } from './settlement-eligibility.js';
+import {
+  providerSettlementBlockers,
+  commissionSettlementBlockers,
+} from './settlement-eligibility.js';
 import {
   ConflictException,
   Injectable,

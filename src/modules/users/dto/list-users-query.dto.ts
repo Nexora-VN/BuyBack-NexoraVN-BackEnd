@@ -3,14 +3,14 @@ import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class ListUsersQueryDto {
-  @ApiPropertyOptional({ enum: ['ACTIVE','DISABLED'] })
+  @ApiPropertyOptional({ enum: ['ACTIVE', 'DISABLED'] })
   @IsOptional()
-  @IsIn(['ACTIVE','DISABLED'])
+  @IsIn(['ACTIVE', 'DISABLED'])
   status?: 'ACTIVE' | 'DISABLED';
 
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
   @IsOptional()
-  @IsIn(['asc','desc'])
+  @IsIn(['asc', 'desc'])
   sort?: 'asc' | 'desc';
 
   @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })

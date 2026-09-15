@@ -69,7 +69,10 @@ describe('Shopee session credential', () => {
     } as unknown as FinanceRepository;
 
     const service = new CredentialService(repo, new ConfigService({}), crypto);
-    const rotated = await service.rotateShopee('SPC_EC=my-shopee-secret-cookie-123456789', 'admin-1');
+    const rotated = await service.rotateShopee(
+      'SPC_EC=my-shopee-secret-cookie-123456789',
+      'admin-1',
+    );
     expect(rotated.status).toBe('ACTIVE');
     expect(rotated.version).toBe(1);
     expect(stored.ciphertext).toBeDefined();
@@ -80,4 +83,3 @@ describe('Shopee session credential', () => {
     expect(read.cookie).toBe('SPC_EC=my-shopee-secret-cookie-123456789');
   });
 });
-

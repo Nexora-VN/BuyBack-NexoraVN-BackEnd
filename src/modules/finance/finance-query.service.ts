@@ -1,4 +1,7 @@
-import { providerSettlementBlockers, commissionSettlementBlockers } from './settlement-eligibility.js';
+import {
+  providerSettlementBlockers,
+  commissionSettlementBlockers,
+} from './settlement-eligibility.js';
 import { paymentBlockers } from '../reconciliation/commission-status.js';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -145,13 +148,33 @@ export class FinanceQueryService {
           }),
           db.commission.count({ where }),
         ]);
-        data = await Promise.all(data.map(async (value) => {
-          const row = value as Awaited<ReturnType<typeof db.commission.findMany<{ include: { checkout: true; settlementItem: true; cashback: true } }>>>[number];
-          const blockers = [...commissionSettlementBlockers(row), ...await providerSettlementBlockers(db, row.checkout)];
-          const { checkout, settlementItem: _item, ...safe } = row;
-          void _item;
-          return { ...safe, checkout: { checkoutId: checkout.checkoutId, purchasedAt: checkout.purchasedAt, conversionState: checkout.conversionState, provider: checkout.provider }, settlementEligibility: { eligible: blockers.length === 0, blockers } };
-        }));
+        data = await Promise.all(
+          data.map(async (value) => {
+            const row = value as Awaited<
+              ReturnType<
+                typeof db.commission.findMany<{
+                  include: { checkout: true; settlementItem: true; cashback: true };
+                }>
+              >
+            >[number];
+            const blockers = [
+              ...commissionSettlementBlockers(row),
+              ...(await providerSettlementBlockers(db, row.checkout)),
+            ];
+            const { checkout, settlementItem: _item, ...safe } = row;
+            void _item;
+            return {
+              ...safe,
+              checkout: {
+                checkoutId: checkout.checkoutId,
+                purchasedAt: checkout.purchasedAt,
+                conversionState: checkout.conversionState,
+                provider: checkout.provider,
+              },
+              settlementEligibility: { eligible: blockers.length === 0, blockers },
+            };
+          }),
+        );
         break;
       }
       case 'cashbacks': {
@@ -432,14 +455,35 @@ export class FinanceQueryService {
         : db.wallet
             .aggregate({ _sum: { available: true, reserved: true } })
             .then((r) => ({ available: r._sum.available ?? 0n, reserved: r._sum.reserved ?? 0n })),
-      db.cashbackAllocation.groupBy({ by: ['state'], where: userId ? { commission: { userId } } : {}, _count: true, _sum: { userAmount: true } }),
-      userId ? Promise.resolve(undefined) : Promise.all([
-        db.withdrawal.count({ where: { status: 'PENDING' } }),
-        db.userBank.count({ where: { status: 'PENDING', deleteAt: null } }),
-        db.reconciliationIssue.count({ where: { status: 'OPEN' } }),
-      ]).then(([pendingWithdrawals, pendingBanks, openIssues]) => ({ pendingWithdrawals, pendingBanks, openIssues })),
+      db.cashbackAllocation.groupBy({
+        by: ['state'],
+        where: userId ? { commission: { userId } } : {},
+        _count: true,
+        _sum: { userAmount: true },
+      }),
+      userId
+        ? Promise.resolve(undefined)
+        : Promise.all([
+            db.withdrawal.count({ where: { status: 'PENDING' } }),
+            db.userBank.count({ where: { status: 'PENDING', deleteAt: null } }),
+            db.reconciliationIssue.count({ where: { status: 'OPEN' } }),
+          ]).then(([pendingWithdrawals, pendingBanks, openIssues]) => ({
+            pendingWithdrawals,
+            pendingBanks,
+            openIssues,
+          })),
     ]);
-    return { orders, commissions, wallet, cashbackSummary: allocations.map(row => ({ state: row.state, userAmount: row._sum.userAmount ?? 0n, count: row._count })), operations };
+    return {
+      orders,
+      commissions,
+      wallet,
+      cashbackSummary: allocations.map((row) => ({
+        state: row.state,
+        userAmount: row._sum.userAmount ?? 0n,
+        count: row._count,
+      })),
+      operations,
+    };
   }
   async health() {
     const [credential, shopeeCredential, latestBatch, openIssues, running, failed, ledger, cached] =

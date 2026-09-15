@@ -7,7 +7,7 @@ const UNSIGNED_INTEGER_PATTERN = /^\d+$/;
 export class ListProductsQueryDto {
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
   @IsOptional()
-  @IsIn(['asc','desc'])
+  @IsIn(['asc', 'desc'])
   sort?: 'asc' | 'desc';
 
   @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
