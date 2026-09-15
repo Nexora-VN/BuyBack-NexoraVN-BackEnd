@@ -1,9 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDate, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIn, IsDate, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { AffiliateLinkStatus, ConvertOrigin } from '../../../common/domain/enums.js';
 
 export class ListAffiliateLinksQueryDto {
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
+  @IsOptional()
+  @IsIn(['asc','desc'])
+  sort?: 'asc' | 'desc';
+
   @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
   @IsOptional()
   @Type(() => Number)

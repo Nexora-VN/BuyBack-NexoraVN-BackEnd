@@ -68,6 +68,7 @@ export interface UpdateAffiliateLinkData {
 }
 
 export interface FindAffiliateLinksOptions {
+  sort?: 'asc' | 'desc';
   skip: number;
   take: number;
   search?: string;

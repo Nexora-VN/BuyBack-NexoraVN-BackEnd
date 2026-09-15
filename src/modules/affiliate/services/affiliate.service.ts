@@ -44,6 +44,7 @@ export class AffiliateService {
     const { items, total } = await this.affiliateRepository.findMany({
       skip: (query.page - 1) * query.limit,
       take: query.limit,
+      ...(query.sort ? { sort: query.sort } : {}),
       ...(query.search?.trim() ? { search: query.search.trim() } : {}),
       ...(query.id?.trim() ? { id: query.id.trim() } : {}),
       ...(query.userId?.trim() ? { userId: query.userId.trim() } : {}),

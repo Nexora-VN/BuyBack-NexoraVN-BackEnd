@@ -1,4 +1,4 @@
-import { paymentBlockers } from '../reconciliation/commission-status.js';
+import { providerSettlementBlockers, commissionSettlementBlockers } from './settlement-eligibility.js';
 import {
   ConflictException,
   Injectable,
@@ -33,7 +33,7 @@ export class SettlementService {
       });
       if (
         rows.length !== input.commissionIds.length ||
-        rows.some((r) => r.state !== 'VALIDATED' || !r.userId || r.settlementItem)
+        rows.some((r) => commissionSettlementBlockers(r).length > 0)
       )
         throw new ConflictException('COMMISSIONS_NOT_ELIGIBLE');
       for (const row of rows) await this.checkProvider(tx, row.checkout);
@@ -122,33 +122,8 @@ export class SettlementService {
     tx: Tx,
     checkout: { provider: string; accountId: string; checkoutId: string; payload?: unknown },
   ) {
-    if (!checkout.provider.startsWith('ADDLIVETAG:'))
-      throw new ConflictException('ADDLIVETAG_CHECKOUT_REQUIRED');
-    // Recheck the source even for previously VALIDATED rows and existing settlement drafts.
-    if (paymentBlockers(checkout.payload).length)
-      throw new ConflictException('PROVIDER_COMMISSION_NOT_PAID');
-    const credential = await tx.providerCredential.findUnique({ where: { id: 'ADDLIVETAG' } });
-    if (
-      !credential?.verifiedAt ||
-      credential.status !== 'ACTIVE' ||
-      credential.accountId !== checkout.accountId
-    )
-      throw new ConflictException('VERIFY_ACCOUNT_AND_VND_FIRST');
-    if (
-      await tx.reconciliationIssue.count({
-        where: { provider: checkout.provider, checkoutId: checkout.checkoutId, status: 'OPEN' },
-      })
-    )
-      throw new ConflictException('OPEN_RECONCILIATION_ISSUES');
-    if (
-      await tx.commission.findFirst({
-        where: {
-          checkout: { checkoutId: checkout.checkoutId, provider: { not: checkout.provider } },
-          state: { not: 'REJECTED' },
-        },
-      })
-    )
-      throw new ConflictException('CROSS_PROVIDER_DUPLICATE');
+    const blockers = await providerSettlementBlockers(tx, checkout);
+    if (blockers.length) throw new ConflictException(blockers[0]);
   }
   cancel(id: string, actor: string, reason: string) {
     return this.repo.transaction(async (tx) => {

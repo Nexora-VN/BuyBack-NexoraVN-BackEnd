@@ -1,10 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 
 const UNSIGNED_INTEGER_PATTERN = /^\d+$/;
 
 export class ListProductsQueryDto {
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
+  @IsOptional()
+  @IsIn(['asc','desc'])
+  sort?: 'asc' | 'desc';
+
   @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
   @IsOptional()
   @Type(() => Number)

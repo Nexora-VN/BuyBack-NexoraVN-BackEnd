@@ -34,6 +34,7 @@ export type CreateProductData = ProductRecord;
 export type UpdateProductData = Partial<Omit<ProductRecord, 'id'>>;
 
 export interface FindProductsOptions {
+  sort?: 'asc' | 'desc';
   skip: number;
   take: number;
   search?: string;

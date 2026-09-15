@@ -36,6 +36,8 @@ export class UsersService {
     const { items, total } = await this.usersRepository.findMany({
       skip: (query.page - 1) * query.limit,
       take: query.limit,
+      ...(query.sort ? { sort: query.sort } : {}),
+      ...(query.status ? { status: query.status } : {}),
       ...(query.search?.trim() ? { search: query.search.trim() } : {}),
     });
 

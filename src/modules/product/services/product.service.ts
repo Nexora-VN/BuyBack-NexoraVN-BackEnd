@@ -55,6 +55,7 @@ export class ProductService {
     const { items, total } = await this.productRepository.findMany({
       skip: (query.page - 1) * query.limit,
       take: query.limit,
+      ...(query.sort ? { sort: query.sort } : {}),
       ...(query.search?.trim() ? { search: query.search.trim() } : {}),
       ...(query.itemId === undefined ? {} : { itemId: BigInt(query.itemId) }),
       ...(query.shopId === undefined ? {} : { shopId: BigInt(query.shopId) }),
