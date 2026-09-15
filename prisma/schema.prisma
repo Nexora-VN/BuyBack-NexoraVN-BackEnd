@@ -349,7 +349,7 @@ enum BatchState {
   @@schema("aff")
 }
 model ProviderCredential {
-  id String @id @default("SAFFI")
+  id String @id
   ciphertext String
   iv String
   tag String
@@ -377,7 +377,7 @@ model ReconciliationBatch {
   startDate String @map("start_date")
   endDate String @map("end_date")
   source String
-  provider String @default("SAFFI")
+  provider String
   accountId String? @map("account_id")
   expectedAffiliate String? @map("expected_affiliate")
   summary Json?
@@ -410,7 +410,7 @@ model ReconciliationPage {
 }
 model ProviderCheckout {
   id String @id @default(uuid()) @db.Uuid
-  provider String @default("SAFFI")
+  provider String
   accountId String @default("") @map("account_id")
   revision Int @default(1)
   sourceHash String? @map("source_hash")
@@ -433,7 +433,7 @@ model ProviderCheckout {
 }
 model ProviderOrder {
   id String @id @default(uuid()) @db.Uuid
-  provider String @default("SAFFI")
+  provider String
   orderId String @map("order_id")
   orderSn String @map("order_sn")
   affiliateTransactionId String? @unique @map("affiliate_transaction_id")
@@ -474,7 +474,7 @@ model ReconciliationIssue {
   batchId String @map("batch_id") @db.Uuid
   checkoutId String? @map("checkout_id")
   type String
-  provider String @default("SAFFI")
+  provider String
   accountId String? @map("account_id")
   sourceHash String? @map("source_hash")
   severity String @default("ERROR")

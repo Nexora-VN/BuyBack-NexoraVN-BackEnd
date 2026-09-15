@@ -1,3 +1,4 @@
+import { paymentBlockers } from '../reconciliation/commission-status.js';
 import {
   ConflictException,
   Injectable,
@@ -119,9 +120,13 @@ export class SettlementService {
   }
   private async checkProvider(
     tx: Tx,
-    checkout: { provider: string; accountId: string; checkoutId: string },
+    checkout: { provider: string; accountId: string; checkoutId: string; payload?: unknown },
   ) {
-    if (!checkout.provider.startsWith('ADDLIVETAG:')) return;
+    if (!checkout.provider.startsWith('ADDLIVETAG:'))
+      throw new ConflictException('ADDLIVETAG_CHECKOUT_REQUIRED');
+    // Recheck the source even for previously VALIDATED rows and existing settlement drafts.
+    if (paymentBlockers(checkout.payload).length)
+      throw new ConflictException('PROVIDER_COMMISSION_NOT_PAID');
     const credential = await tx.providerCredential.findUnique({ where: { id: 'ADDLIVETAG' } });
     if (
       !credential?.verifiedAt ||

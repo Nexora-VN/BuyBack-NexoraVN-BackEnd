@@ -20,7 +20,7 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.js';
 import { FinanceQueryService } from './finance-query.service.js';
-import { FinanceRepository, audit } from './finance.repository.js';
+import { FinanceRepository } from './finance.repository.js';
 import { BankService } from './bank.service.js';
 import { SettlementService } from './settlement.service.js';
 import { WithdrawalService } from './withdrawal.service.js';
@@ -43,6 +43,7 @@ import {
 import { AddLiveTagEngine } from '../reconciliation/addlivetag-engine.js';
 type SchemaObject = Extract<Parameters<typeof ApiBody>[0], { schema: unknown }>['schema'];
 const schema = (s: z.ZodType) => ({ schema: z.toJSONSchema(s) as SchemaObject });
+const cookieInput = z.object({ cookie: z.string().min(10).max(32000) });
 const reasonInput = z.object({ reason });
 @ApiTags('finance-admin')
 @ApiBearerAuth('access-token')
@@ -128,10 +129,25 @@ export class FinanceAdminController {
   credential() {
     return this.credentials.metadata();
   }
+  @Get('provider-credential/shopee')
+  @Roles(UserRole.SUPER_ADMIN)
+  shopeeCredential() {
+    return this.credentials.shopeeMetadata();
+  }
+  @Put('provider-credential/shopee')
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiBody(schema(cookieInput))
+  rotateShopee(@Body() body: unknown, @CurrentUser() actor: AuthenticatedUser) {
+    return this.credentials.rotateShopee(validate(cookieInput, body).cookie, actor.id);
+  }
   @Put('provider-credential')
   @Roles(UserRole.SUPER_ADMIN)
-  @ApiBody(schema(providerInput))
+  @ApiBody(schema(z.union([providerInput, cookieInput])))
   rotate(@Body() body: unknown, @CurrentUser() actor: AuthenticatedUser) {
+    const cookieParsed = cookieInput.safeParse(body);
+    if (cookieParsed.success) {
+      return this.credentials.rotateShopee(cookieParsed.data.cookie, actor.id);
+    }
     return this.credentials.rotate(validate(providerInput, body), actor.id);
   }
   @Post('provider-credential/verify')
@@ -139,11 +155,6 @@ export class FinanceAdminController {
   @ApiBody(schema(verificationInput))
   verifyProvider(@Body() body: unknown, @CurrentUser() actor: AuthenticatedUser) {
     return this.credentials.verify(validate(verificationInput, body), actor.id);
-  }
-  @Post('reconciliation/purge-saffi')
-  @Roles(UserRole.SUPER_ADMIN)
-  purgeSaffi(@CurrentUser() actor: AuthenticatedUser) {
-    return this.credentials.purgeSaffiData(actor.id);
   }
   @Post('reconciliation/sync')
   @ApiBody(schema(syncRangeInput))
@@ -174,36 +185,6 @@ export class FinanceAdminController {
     @CurrentUser() actor: AuthenticatedUser,
   ) {
     return this.addLiveTag.review(id, validate(reviewInput, body), actor.id);
-  }
-  @Post('reconciliation/legacy-commissions/:id/exclude')
-  @Roles(UserRole.SUPER_ADMIN)
-  @ApiBody(schema(reasonInput))
-  excludeLegacy(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: unknown,
-    @CurrentUser() actor: AuthenticatedUser,
-  ) {
-    const input = validate(reasonInput, body);
-    return this.repo.transaction(async (tx) => {
-      const row = await tx.commission.findUnique({
-        where: { id },
-        include: { checkout: true, settlementItem: true },
-      });
-      if (
-        !row ||
-        row.checkout.provider !== 'SAFFI' ||
-        ['PAID', 'REVERSED'].includes(row.state) ||
-        row.settlementItem
-      )
-        throw new NotFoundException('UNSETTLED_LEGACY_COMMISSION_REQUIRED');
-      const result = await tx.commission.update({ where: { id }, data: { state: 'REJECTED' } });
-      await tx.cashbackAllocation.updateMany({
-        where: { commissionId: id },
-        data: { state: 'REJECTED' },
-      });
-      await audit(tx, actor.id, 'LEGACY_COMMISSION_EXCLUDED', id, { reason: input.reason });
-      return result;
-    });
   }
   @Post('settlements')
   @Roles(UserRole.SUPER_ADMIN)

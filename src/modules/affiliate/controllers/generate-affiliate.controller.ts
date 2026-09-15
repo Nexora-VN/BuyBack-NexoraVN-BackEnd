@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../../auth/guards/roles.guard.js';
 import type { AuthenticatedUser } from '../../auth/interfaces/authenticated-user.js';
 import { GenerateAffiliateService } from '../services/generate-affiiliate.service.js';
-import { ErrorCode } from '../../../common/domain/error-code.js';
+import type { GenerateAffiliateResponse } from '../services/generate-affiiliate.service.js';
 import { validate } from '../../finance/finance.contract.js';
 import { z } from 'zod';
 
@@ -47,7 +47,7 @@ export class GenerateAffiliateController {
   create(
     @Body() input: { url: string },
     @CurrentUser() actor: AuthenticatedUser,
-  ): Promise<{ link: string | null; code: ErrorCode | null }> {
+  ): Promise<GenerateAffiliateResponse> {
     const value = validate(z.object({ url: z.url().max(4096) }), input);
     return this.generateAffiliateService.generateAffiliateLinkBySystem(value.url, actor.id);
   }

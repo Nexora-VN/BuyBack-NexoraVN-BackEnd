@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FinanceRepository, audit } from '../finance/finance.repository.js';
+import { FinanceCrypto } from '../finance/crypto.service.js';
 import type { z } from 'zod';
 import type { providerInput, verificationInput } from './addlivetag.contract.js';
 const select = {
@@ -14,12 +15,65 @@ const select = {
   lastValidatedAt: true,
   updatedAt: true,
 } as const;
+
+const shopeeSelect = {
+  id: true,
+  version: true,
+  status: true,
+  lastValidatedAt: true,
+  updatedAt: true,
+} as const;
+
 @Injectable()
 export class CredentialService {
   constructor(
     private readonly repo: FinanceRepository,
     private readonly config: ConfigService,
+    private readonly crypto?: FinanceCrypto,
   ) {}
+  shopeeMetadata() {
+    return this.repo.db.providerCredential.findUnique({ where: { id: 'SHOPEE' }, select: shopeeSelect });
+  }
+  rotateShopee(cookie: string, actor: string) {
+    if (!this.crypto) throw new ServiceUnavailableException('CRYPTO_SERVICE_NOT_CONFIGURED');
+    const encrypted = this.crypto.encrypt(cookie, 'provider:SHOPEE');
+    return this.repo.transaction(async (tx) => {
+      const row = await tx.providerCredential.upsert({
+        where: { id: 'SHOPEE' },
+        create: {
+          id: 'SHOPEE',
+          ...encrypted,
+          status: 'ACTIVE',
+          lastValidatedAt: new Date(),
+          rotatedBy: actor,
+          version: 1,
+        },
+        update: {
+          ...encrypted,
+          status: 'ACTIVE',
+          lastValidatedAt: new Date(),
+          version: { increment: 1 },
+          rotatedBy: actor,
+        },
+        select: shopeeSelect,
+      });
+      await audit(tx, actor, 'SHOPEE_CREDENTIAL_ROTATED', 'SHOPEE', { version: row.version });
+      return row;
+    });
+  }
+  async readShopee() {
+    if (!this.crypto) throw new ServiceUnavailableException('CRYPTO_SERVICE_NOT_CONFIGURED');
+    const row = await this.repo.db.providerCredential.findUnique({ where: { id: 'SHOPEE' } });
+    if (!row || row.status === 'EXPIRED')
+      throw new ServiceUnavailableException('SHOPEE_CREDENTIAL_REQUIRED');
+    return { version: row.version, cookie: this.crypto.decrypt(row, 'provider:SHOPEE') };
+  }
+  async markShopee(version: number, status: 'ACTIVE' | 'EXPIRED') {
+    await this.repo.db.providerCredential.updateMany({
+      where: { id: 'SHOPEE', version },
+      data: { status, ...(status === 'ACTIVE' ? { lastValidatedAt: new Date() } : {}) },
+    });
+  }
   metadata() {
     return this.repo.db.providerCredential.findUnique({ where: { id: 'ADDLIVETAG' }, select });
   }
@@ -91,96 +145,6 @@ export class CredentialService {
     await this.repo.db.providerCredential.updateMany({
       where: { id: 'ADDLIVETAG', version },
       data: { status, ...(status === 'ACTIVE' ? { lastValidatedAt: new Date() } : {}) },
-    });
-  }
-  purgeSaffiData(actor: string) {
-    return this.repo.transaction(async (tx) => {
-      const issues = await tx.reconciliationIssue.deleteMany({
-        where: { OR: [{ provider: 'SAFFI' }, { provider: { startsWith: 'SAFFI:' } }] },
-      });
-      const saffiCheckouts = await tx.providerCheckout.findMany({
-        where: { OR: [{ provider: 'SAFFI' }, { provider: { startsWith: 'SAFFI:' } }] },
-        select: { id: true },
-      });
-      const saffiCheckoutIds = saffiCheckouts.map((c) => c.id);
-      const saffiCommissions = await tx.commission.findMany({
-        where: { checkoutId: { in: saffiCheckoutIds } },
-        select: { id: true },
-      });
-      const saffiCommissionIds = saffiCommissions.map((c) => c.id);
-
-      const settlementItems = await tx.settlementItem.deleteMany({
-        where: { commissionId: { in: saffiCommissionIds } },
-      });
-      const emptyBatches = await tx.settlementBatch.deleteMany({
-        where: { items: { none: {} } },
-      });
-
-      const walletTx = await tx.walletTransaction.deleteMany({
-        where: {
-          OR: [
-            { reference: { in: saffiCommissionIds } },
-            { type: { in: ['CASHBACK_CREDIT', 'CASHBACK_REVERSAL'] } },
-          ],
-        },
-      });
-      const wallets = await tx.wallet.updateMany({
-        data: { available: 0n, reserved: 0n },
-      });
-
-      const cashbacks = await tx.cashbackAllocation.deleteMany({
-        where: { commissionId: { in: saffiCommissionIds } },
-      });
-      const commissions = await tx.commission.deleteMany({
-        where: { checkoutId: { in: saffiCheckoutIds } },
-      });
-
-      const saffiOrders = await tx.providerOrder.findMany({
-        where: {
-          OR: [
-            { provider: 'SAFFI' },
-            { provider: { startsWith: 'SAFFI:' } },
-            { checkoutId: { in: saffiCheckoutIds } },
-          ],
-        },
-        select: { id: true },
-      });
-      const saffiOrderIds = saffiOrders.map((o) => o.id);
-      const orderItems = await tx.providerOrderItem.deleteMany({
-        where: { orderId: { in: saffiOrderIds } },
-      });
-      const orders = await tx.providerOrder.deleteMany({
-        where: { id: { in: saffiOrderIds } },
-      });
-
-      const checkouts = await tx.providerCheckout.deleteMany({
-        where: { id: { in: saffiCheckoutIds } },
-      });
-      await tx.reconciliationPage.deleteMany({});
-      const batches = await tx.reconciliationBatch.deleteMany({
-        where: { OR: [{ provider: 'SAFFI' }, { provider: { startsWith: 'SAFFI:' } }] },
-      });
-      const credentials = await tx.providerCredential.deleteMany({
-        where: { OR: [{ id: 'SAFFI' }, { id: { startsWith: 'SAFFI' } }] },
-      });
-
-      const summary = {
-        issues: issues.count,
-        settlementItems: settlementItems.count,
-        emptySettlementBatches: emptyBatches.count,
-        walletTransactions: walletTx.count,
-        walletsReset: wallets.count,
-        cashbacks: cashbacks.count,
-        commissions: commissions.count,
-        orderItems: orderItems.count,
-        orders: orders.count,
-        checkouts: checkouts.count,
-        batches: batches.count,
-        credentials: credentials.count,
-      };
-
-      await audit(tx, actor, 'SAFFI_DATA_PURGED', 'SAFFI', summary);
-      return { ok: true, summary };
     });
   }
 }
