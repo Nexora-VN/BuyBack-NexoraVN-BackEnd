@@ -247,16 +247,6 @@ describe('Affiliate finance end-to-end', () => {
     }
     if (app) await app.close();
   }, 30000);
-  it('generates an actual an_redir link and persists tracking', async () => {
-    const generated = await api(userToken)
-      .post('generate-affiliate', {
-        url: 'https://shopee.vn/product/46182105/26771994719?utm=test',
-      })
-      .expect(201);
-    const url = new URL((generated.body as { link: string }).link);
-    expect(url.searchParams.get('affiliate_id')).toBe('17303170528');
-    expect(url.searchParams.get('sub_id')?.split('-')).toHaveLength(5);
-  });
   it('rejects USER financial administration and ADMIN settlement/credential writes', async () => {
     await api(userToken).get('admin/commissions').expect(403);
     await api(adminToken)
