@@ -158,9 +158,9 @@ describe('AffiliateService', () => {
         productId: sampleProductId,
         originLink: 'https://vn.shp.ee/abc',
         cleanLink: 'https://shopee.vn/product/1/2',
-        fullLinkSystem: 'https://nexora.app/link/sys1',
-        shortLink: 'https://nexora.app/s/1',
-        longLink: 'https://nexora.app/l/1',
+        fullLinkSystem: 'https://piggyback.app/link/sys1',
+        shortLink: 'https://piggyback.app/s/1',
+        longLink: 'https://piggyback.app/l/1',
       },
       actorId,
     );
@@ -170,9 +170,9 @@ describe('AffiliateService', () => {
       productId: sampleProductId,
       originLink: 'https://vn.shp.ee/abc',
       cleanLink: 'https://shopee.vn/product/1/2',
-      fullLinkSystem: 'https://nexora.app/link/sys1',
-      shortLink: 'https://nexora.app/s/1',
-      longLink: 'https://nexora.app/l/1',
+      fullLinkSystem: 'https://piggyback.app/link/sys1',
+      shortLink: 'https://piggyback.app/s/1',
+      longLink: 'https://piggyback.app/l/1',
       convertOrigin: ConvertOrigin.SYSTEM,
       affiliateLinkStatus: AffiliateLinkStatus.WORKING,
     });
@@ -185,9 +185,9 @@ describe('AffiliateService', () => {
         productId: sampleProductId,
         originLink: 'https://vn.shp.ee/abc',
         cleanLink: 'https://shopee.vn/product/1/2',
-        fullLinkSystem: 'https://nexora.app/link/sys123',
-        shortLink: 'https://nexora.app/s/short123',
-        longLink: 'https://nexora.app/l/long123',
+        fullLinkSystem: 'https://piggyback.app/link/sys123',
+        shortLink: 'https://piggyback.app/s/short123',
+        longLink: 'https://piggyback.app/l/long123',
       },
       actorId,
     );
@@ -241,13 +241,13 @@ describe('AffiliateService', () => {
     const updated = await service.update(
       created.id,
       {
-        shortLink: 'https://nexora.app/s/new',
+        shortLink: 'https://piggyback.app/s/new',
         affiliateLinkStatus: AffiliateLinkStatus.EXPIRED,
       },
       actorId,
     );
 
-    expect(updated.shortLink).toBe('https://nexora.app/s/new');
+    expect(updated.shortLink).toBe('https://piggyback.app/s/new');
     expect(updated.affiliateLinkStatus).toBe(AffiliateLinkStatus.EXPIRED);
   });
 
