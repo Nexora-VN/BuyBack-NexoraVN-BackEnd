@@ -25,9 +25,16 @@ export interface CreateAuthSessionData {
   userAgent?: string;
 }
 
+export interface CreateOAuthUserData {
+  email: string;
+  fullName?: string;
+  displayName?: string;
+}
+
 export abstract class AuthRepository {
   abstract findUserByEmail(email: string): Promise<AuthUserRecord | null>;
   abstract findUserById(id: string): Promise<AuthUserRecord | null>;
+  abstract createOAuthUser(data: CreateOAuthUserData): Promise<AuthUserRecord>;
   abstract createSession(data: CreateAuthSessionData): Promise<void>;
   abstract findSession(id: string): Promise<AuthSessionRecord | null>;
   abstract rotateSession(
