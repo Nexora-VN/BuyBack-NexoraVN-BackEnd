@@ -52,7 +52,7 @@ if [[ "$service" == backend ]]; then
   test -f "$deploy_dir/backend/.env.prod"
   echo "Applying committed Prisma migrations; old backend remains running."
   # This one-off container uses the new image and existing env/network; it does not start dependencies.
-  if ! "${compose[@]}" run --rm --no-deps -T --entrypoint pnpm backend prisma migrate deploy; then
+  if ! "${compose[@]}" run --rm --no-deps -T --entrypoint pnpm backend prisma migrate deploy < /dev/null; then
     echo "MIGRATION FAILED: application containers have not been replaced. Fix the migration; no DB rollback attempted." >&2
     exit 1
   fi

@@ -48,6 +48,38 @@ export class AuthService {
     return tokens;
   }
 
+  async loginWithClerk(
+    data: { email: string; fullName?: string; displayName?: string },
+    metadata: AuthRequestMetadata,
+  ): Promise<AuthTokensResponseDto> {
+    const email = data.email.trim().toLowerCase();
+    let user = await this.authRepository.findUserByEmail(email);
+    if (!user) {
+      user = await this.authRepository.createOAuthUser({
+        email,
+        fullName: data.fullName,
+        displayName: data.displayName,
+      });
+    }
+
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Tài khoản đã bị vô hiệu hóa hoặc không hợp lệ');
+    }
+
+    const sessionId = randomUUID();
+    const tokens = await this.issueTokens(user, sessionId);
+    await this.authRepository.createSession({
+      id: sessionId,
+      userId: user.id,
+      refreshTokenHash: await argon2.hash(tokens.refreshToken),
+      expiresAt: this.refreshTokenExpiresAt(),
+      ...(metadata.ipAddress ? { ipAddress: metadata.ipAddress } : {}),
+      ...(metadata.userAgent ? { userAgent: metadata.userAgent } : {}),
+    });
+
+    return tokens;
+  }
+
   async refresh(refreshToken: string): Promise<AuthTokensResponseDto> {
     const claims = await this.verifyRefreshToken(refreshToken);
     const session = await this.authRepository.findSession(claims.sid);

@@ -10,6 +10,7 @@ import {
 import type { FastifyRequest } from 'fastify';
 import { CurrentUser } from '../decorators/current-user.decorator.js';
 import { AuthTokensResponseDto, AuthUserDto } from '../dto/auth-response.dto.js';
+import { ClerkLoginDto } from '../dto/clerk-login.dto.js';
 import { LoginDto } from '../dto/login.dto.js';
 import { RefreshTokenDto } from '../dto/refresh-token.dto.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
@@ -28,6 +29,21 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'Invalid credentials or disabled account' })
   login(@Body() input: LoginDto, @Req() request: FastifyRequest): Promise<AuthTokensResponseDto> {
     return this.authService.login(input, {
+      ipAddress: request.ip,
+      ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
+    });
+  }
+
+  @Post('clerk')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Login or sync user authenticated via Clerk' })
+  @ApiOkResponse({ type: AuthTokensResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Disabled account' })
+  loginClerk(
+    @Body() input: ClerkLoginDto,
+    @Req() request: FastifyRequest,
+  ): Promise<AuthTokensResponseDto> {
+    return this.authService.loginWithClerk(input, {
       ipAddress: request.ip,
       ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),
     });
