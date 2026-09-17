@@ -36,8 +36,8 @@ export async function bootstrap(): Promise<NestFastifyApplication> {
 
   if (config.get<boolean>('SWAGGER_ENABLED', true)) {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('BuyBack API')
-      .setDescription('BuyBack affiliate cashback backend API')
+      .setTitle('Piggy Buy Back API')
+      .setDescription('Piggy Buy Back affiliate cashback backend API')
       .setVersion('1.0')
       .addBearerAuth(
         {
