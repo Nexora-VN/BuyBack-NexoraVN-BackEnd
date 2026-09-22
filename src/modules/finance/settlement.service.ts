@@ -1,3 +1,4 @@
+import { step } from '../../common/observability/observability.js';
 import {
   providerSettlementBlockers,
   commissionSettlementBlockers,
@@ -28,7 +29,7 @@ export class SettlementService {
       net = BigInt(input.netVnd);
     if (gross - deduction !== net || gross <= 0n)
       throw new ConflictException('SETTLEMENT_TOTALS_MISMATCH');
-    return this.repo.transaction(async (tx) => {
+    return step('settlement.transaction', () => this.repo.transaction(async (tx) => {
       const rows = await tx.commission.findMany({
         where: { id: { in: input.commissionIds } },
         orderBy: { id: 'asc' },
@@ -67,12 +68,12 @@ export class SettlementService {
       });
       await audit(tx, actor, 'SETTLEMENT_CREATED', settlement.id);
       return settlement;
-    });
+    }));
   }
   confirm(id: string, actor: string) {
     if (!this.config.get<boolean>('SETTLEMENT_ENABLED'))
       throw new ServiceUnavailableException('SETTLEMENT_DISABLED');
-    return this.repo.transaction(async (tx) => {
+    return step('settlement.transaction', () => this.repo.transaction(async (tx) => {
       const batch = await tx.settlementBatch.findUnique({
         where: { id },
         include: {
@@ -119,7 +120,7 @@ export class SettlementService {
       });
       await audit(tx, actor, 'SETTLEMENT_CONFIRMED', id, { netVnd: batch.netVnd });
       return { id, status: 'CONFIRMED' };
-    });
+    }));
   }
   private async checkProvider(
     tx: Tx,
@@ -129,7 +130,7 @@ export class SettlementService {
     if (blockers.length) throw new ConflictException(blockers[0]);
   }
   cancel(id: string, actor: string, reason: string) {
-    return this.repo.transaction(async (tx) => {
+    return step('settlement.transaction', () => this.repo.transaction(async (tx) => {
       const batch = await tx.settlementBatch.findUnique({ where: { id } });
       if (!batch) throw new NotFoundException('SETTLEMENT_NOT_FOUND');
       if (batch.status === 'CANCELLED') return { id, status: 'CANCELLED' };
@@ -140,6 +141,6 @@ export class SettlementService {
       await tx.settlementItem.deleteMany({ where: { settlementId: id } });
       await tx.settlementBatch.update({ where: { id }, data: { status: 'CANCELLED' } });
       return { id, status: 'CANCELLED' };
-    });
+    }));
   }
 }

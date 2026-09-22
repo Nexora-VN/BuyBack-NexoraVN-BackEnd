@@ -1,4 +1,5 @@
-import { z } from 'zod';
+import { AppError } from '../../../common/observability/app-error.js';
+import { event } from '../../../common/observability/observability.js';
 import {
   productProviderReferenceSchema,
   type ProductProviderReference,
@@ -7,9 +8,9 @@ import {
 const PRODUCT_PROVIDER_URL = 'https://data.addlivetag.com/product-data/product-data.php';
 const REQUEST_TIMEOUT_MS = 10_000;
 
-export class ProductProviderError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
+export class ProductProviderError extends AppError {
+  constructor(message: string, options?: ErrorOptions, code = 'PRODUCT_PROVIDER_INVALID_RESPONSE', status = 502) {
+    super(code, status, message, 'fetch_product', options?.cause);
     this.name = 'ProductProviderError';
   }
 }
@@ -20,6 +21,17 @@ export const getProductByItemId = async (
   const fullUrl = new URL(PRODUCT_PROVIDER_URL);
   fullUrl.searchParams.set('item_id', normalizeItemId(productId));
 
+  return fetchProduct(fullUrl);
+};
+
+export const getProductByUrl = async (url: string): Promise<ProductProviderReference> => {
+  const fullUrl = new URL(PRODUCT_PROVIDER_URL);
+  fullUrl.searchParams.set('url', url);
+  return fetchProduct(fullUrl);
+};
+
+async function fetchProduct(fullUrl: URL): Promise<ProductProviderReference> {
+  const started = performance.now();
   let response: Response;
   try {
     response = await fetch(fullUrl, {
@@ -27,12 +39,15 @@ export const getProductByItemId = async (
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (error) {
-    throw new ProductProviderError('Không thể kết nối API thông tin sản phẩm', { cause: error });
+    const timeout = error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name);
+    throw new ProductProviderError('Không thể kết nối API thông tin sản phẩm', { cause: error }, timeout ? 'AFFILIATE_PROVIDER_TIMEOUT' : 'AFFILIATE_PROVIDER_ERROR', timeout ? 504 : 502);
   }
 
+  event('debug', 'provider.response', { provider: 'AddLiveTag', stage: 'fetch_product', statusCode: response.status, durationMs: Math.round(performance.now() - started) });
   if (!response.ok) {
+    await response.body?.cancel();
     throw new ProductProviderError(
-      `API thông tin sản phẩm trả HTTP ${response.status} ${response.statusText}`,
+      'API thông tin sản phẩm tạm thời không khả dụng',
     );
   }
 
@@ -48,12 +63,12 @@ export const getProductByItemId = async (
   const result = productProviderReferenceSchema.safeParse(payload);
   if (!result.success) {
     throw new ProductProviderError(
-      `Payload API thông tin sản phẩm không đúng contract: ${z.prettifyError(result.error)}`,
+      'Payload API thông tin sản phẩm không đúng contract',
     );
   }
 
   return result.data;
-};
+}
 
 export const getProductByAffProductId = getProductByItemId;
 

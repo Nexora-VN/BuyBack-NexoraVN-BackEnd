@@ -33,6 +33,16 @@ describe('generateLinkByAddLiveTag', () => {
     const url = new URL(request);
     expect(url.searchParams.get('subid4')).toBe('tracking');
   });
+  it('does not request a short link without an API key', async () => {
+    delete process.env.ADDLIVETAG_API_KEY;
+    const fetch = jest.spyOn(global, 'fetch');
+    expect(await generateLinkByAddLiveTag('https://shopee.vn/product/1/2', subIds)).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('falls back when the short-link request times out', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new DOMException('timeout', 'TimeoutError'));
+    expect(await generateLinkByAddLiveTag('https://shopee.vn/product/1/2', subIds)).toBeNull();
+  });
   it('falls back on network failures', async () => {
     jest.spyOn(global, 'fetch').mockRejectedValue(new Error('offline'));
     expect(await generateLinkByAddLiveTag('https://shopee.vn/product/1/2', subIds)).toBeNull();

@@ -1,5 +1,5 @@
 import {
-  providerSettlementBlockers,
+  batchProviderSettlementBlockers,
   commissionSettlementBlockers,
 } from './settlement-eligibility.js';
 import { paymentBlockers } from '../reconciliation/commission-status.js';
@@ -148,8 +148,9 @@ export class FinanceQueryService {
           }),
           db.commission.count({ where }),
         ]);
-        data = await Promise.all(
-          data.map(async (value) => {
+        const checkoutRows = data as { checkout: { provider: string; accountId: string; checkoutId: string; payload?: unknown } }[];
+        const providerBlockers = await batchProviderSettlementBlockers(db, checkoutRows.map((row) => row.checkout));
+        data = data.map((value) => {
             const row = value as Awaited<
               ReturnType<
                 typeof db.commission.findMany<{
@@ -159,7 +160,7 @@ export class FinanceQueryService {
             >[number];
             const blockers = [
               ...commissionSettlementBlockers(row),
-              ...(await providerSettlementBlockers(db, row.checkout)),
+              ...(providerBlockers.get(`${row.checkout.provider}:${row.checkout.checkoutId}`) ?? []),
             ];
             const { checkout, settlementItem: _item, ...safe } = row;
             void _item;
@@ -173,8 +174,7 @@ export class FinanceQueryService {
               },
               settlementEligibility: { eligible: blockers.length === 0, blockers },
             };
-          }),
-        );
+          });
         break;
       }
       case 'cashbacks': {

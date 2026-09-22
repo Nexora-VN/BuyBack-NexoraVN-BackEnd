@@ -1,4 +1,6 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { timingSafeEqual } from 'node:crypto';
+import { ServiceUnavailableException, UnauthorizedException, Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiNoContentResponse,
@@ -20,7 +22,7 @@ import { AuthService } from '../services/auth.service.js';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService, private readonly config: ConfigService) {}
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -43,6 +45,11 @@ export class AuthController {
     @Body() input: ClerkLoginDto,
     @Req() request: FastifyRequest,
   ): Promise<AuthTokensResponseDto> {
+    // Only the trusted Next.js server may exchange an authenticated Clerk identity.
+    const secret = this.config.get<string>('CLERK_SYNC_SECRET');
+    if (!secret) throw new ServiceUnavailableException('CLERK_SYNC_NOT_CONFIGURED');
+    const supplied = request.headers['x-clerk-sync-secret'];
+    if (typeof supplied !== 'string' || Buffer.byteLength(supplied) !== Buffer.byteLength(secret) || !timingSafeEqual(Buffer.from(supplied), Buffer.from(secret))) throw new UnauthorizedException('UNAUTHORIZED');
     return this.authService.loginWithClerk(input, {
       ipAddress: request.ip,
       ...(request.headers['user-agent'] ? { userAgent: request.headers['user-agent'] } : {}),

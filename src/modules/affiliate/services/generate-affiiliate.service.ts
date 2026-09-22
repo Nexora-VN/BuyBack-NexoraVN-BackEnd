@@ -1,17 +1,19 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AffiliateRepository } from '../repositories/affiliate.repository.js';
 import { UsersService } from '../../users/services/users.service.js';
 import { AffiliateLinkStatus, ConvertOrigin, UserStatus } from '../../../common/domain/enums.js';
 import { randomUUID } from 'node:crypto';
-import { ERROR_CODE, type ErrorCode } from '../../../common/domain/error-code.js';
-import { makeCleanShortLink, parseShopeeProductUrl } from '../utils/clean-short-link.js';
-import { getProductByAffProductId } from '../../product/utils/get-product-by-aff-id.js';
+import { type ErrorCode } from '../../../common/domain/error-code.js';
+import { checkedUrl, parseShopeeProductUrl } from '../utils/clean-short-link.js';
+import { getProductByUrl } from '../../product/utils/get-product-by-aff-id.js';
 import { mapProviderProductToCreateDto } from '../../product/mappers/product-provider.mapper.js';
 import { ProductService } from '../../product/services/product.service.js';
 import type { GenerateLinkAddLiveTag, SubIds } from '../dto/generate-link-alt.type.js';
 import { generateLinkByAddLiveTag } from '../utils/generate-link-by-alt.js';
 
+import { AppError, databaseError } from '../../../common/observability/app-error.js';
+import { event, step } from '../../../common/observability/observability.js';
 import type { ProductResponseDto } from '../../product/dto/product-response.dto.js';
 
 export interface GenerateAffiliateResponse {
@@ -23,7 +25,6 @@ export interface GenerateAffiliateResponse {
 
 @Injectable()
 export class GenerateAffiliateService {
-  private readonly logger = new Logger(GenerateAffiliateService.name);
   constructor(
     private readonly affiliateRepository: AffiliateRepository,
     private readonly usersService: UsersService,
@@ -38,11 +39,7 @@ export class GenerateAffiliateService {
     // Check User
     const user = await this.usersService.getUserStatusById(userId);
     if (user.status !== UserStatus.ACTIVE) {
-      return {
-        link: null,
-        code: user.code,
-        product: null,
-      };
+      throw new AppError(user.code ?? 'FORBIDDEN', 403, 'Tài khoản không thể tạo link.', 'validate_user');
     }
     // Generate link
     return this.generateLinkBySystem(shopeeUrl, userId, 'web');
@@ -53,12 +50,27 @@ export class GenerateAffiliateService {
     userId: string,
     channel?: 'web' | 'ios' | 'android',
   ): Promise<GenerateAffiliateResponse> {
+    const started = performance.now();
+    let stage = 'validate_input';
+    let savedProductId: string | undefined;
     try {
+      await step(stage, () => {
+        try { checkedUrl(url); } catch (cause) { throw new AppError('SHOPEE_LINK_INVALID', 400, 'Link Shopee không hợp lệ.', stage, cause); }
+      });
       const affiliateId = this.configService.getOrThrow<string>('SHOPEE_AFFILIATE_ID');
-      // Expand and validate Shopee URLs before resolving the product or creating tracking.
-      const cleanLink = await makeCleanShortLink(url);
-      const product = await this.resolveProduct(cleanLink);
-      const savedProductId = product.id;
+      stage = 'fetch_product';
+      const { productInfo } = await step(stage, () => getProductByUrl(url));
+      stage = 'validate_product';
+      const cleanLink = await step(stage, () => {
+        try {
+          const { shopId, productId } = parseShopeeProductUrl(productInfo.originLink);
+          if (BigInt(shopId) !== BigInt(productInfo.shopId) || BigInt(productId) !== BigInt(productInfo.itemId)) throw new Error('PROVIDER_PRODUCT_ID_MISMATCH');
+          return `https://shopee.vn/product/${shopId}/${productId}`;
+        } catch (cause) { throw new AppError('PROVIDER_PRODUCT_INVALID', 502, 'Thông tin sản phẩm chưa hợp lệ. Vui lòng thử lại.', stage, cause); }
+      });
+      stage = 'upsert_product';
+      const product = await step(stage, () => this.productService.upsertFromProvider(mapProviderProductToCreateDto({ ...productInfo, originLink: cleanLink })));
+      savedProductId = product.id;
 
       const affiliateLinkId = randomUUID();
       // Keep sub-ID order stable for reconciliation: user, link, channel, tracking, product.
@@ -79,14 +91,14 @@ export class GenerateAffiliateService {
 
       let generatedLink: string;
       // Prefer the provider short link; invalid/failed responses fall back to an_redir.
-      const addLiveTagResponse: GenerateLinkAddLiveTag | null = await generateLinkByAddLiveTag(
-        url,
-        subIdsObjects,
-      );
+      stage = 'generate_short_link';
+      const addLiveTagResponse: GenerateLinkAddLiveTag | null = await step(stage, () => generateLinkByAddLiveTag(cleanLink, subIdsObjects));
       if (addLiveTagResponse) {
         // The provider helper accepts only successful responses with a valid affiliate URL.
         generatedLink = addLiveTagResponse.affiliateLink;
       } else {
+        stage = 'fallback_link';
+        event('debug', 'generate.fallback', { stage, outcome: 'fallback' });
         // AFF_LINK = an_redir + encoded clean origin_link + affiliate_id + ordered sub_id.
         const params = new URLSearchParams({
           origin_link: cleanLink,
@@ -97,11 +109,12 @@ export class GenerateAffiliateService {
         generatedLink = `https://s.shopee.vn/an_redir?${params.toString()}`;
       }
 
-      await this.affiliateRepository.create({
+      stage = 'save_history';
+      await step(stage, () => this.affiliateRepository.create({
         id: affiliateLinkId,
         affiliateIdSnapshot: affiliateId,
         userId,
-        productId: savedProductId,
+        productId: product.id,
         originLink: url,
         shortLink: addLiveTagResponse?.affiliateLink,
         longLink: addLiveTagResponse?.altLink,
@@ -116,7 +129,8 @@ export class GenerateAffiliateService {
         affiliateLinkStatus: AffiliateLinkStatus.WORKING,
         createdBy: userId,
         updatedBy: userId,
-      });
+      }));
+      event('log', 'generate.completed', { durationMs: Math.round(performance.now() - started), outcome: 'success', productId: savedProductId, affiliateLinkId, linkType: addLiveTagResponse ? 'short' : 'fallback' });
 
       return {
         addLiveTagLink: addLiveTagResponse,
@@ -125,24 +139,11 @@ export class GenerateAffiliateService {
         // Provider commission is an estimate, not the user cashback allocation.
         product,
       };
-    } catch {
-      this.logger.error('Affiliate link generation failed');
-
-      return {
-        addLiveTagLink: null,
-        link: null,
-        code: ERROR_CODE.AFFILIATE_CONVERT_FAILED,
-        product: null,
-      };
+    } catch (cause) {
+      const error = cause instanceof AppError ? cause : databaseError(cause, stage);
+      event('debug', 'generate.failed', { stage, errorCode: error.code, durationMs: Math.round(performance.now() - started), productSaved: !!savedProductId });
+      if (!error.stage) throw new AppError(error.code, error.getStatus(), String((error.getResponse() as {message: string}).message), stage, cause);
+      throw error;
     }
-  }
-
-  private async resolveProduct(cleanLink: string): Promise<ProductResponseDto> {
-    const { productId } = parseShopeeProductUrl(cleanLink);
-    const existing = await this.productService.findByItemId(productId);
-    // Reuse ProductService serialization so BigInt amounts are JSON-safe in both branches.
-    if (existing) return this.productService.toResponse(existing);
-    const response = await getProductByAffProductId(productId);
-    return this.productService.create(mapProviderProductToCreateDto(response.productInfo));
   }
 }

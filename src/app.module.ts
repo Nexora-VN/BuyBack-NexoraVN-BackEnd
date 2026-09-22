@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
+import { httpLogging } from './common/observability/http-logging.js';
 import { validateEnvironment } from './common/config/environment.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { BigIntSerializationInterceptor } from './common/interceptors/bigint-serialization.interceptor.js';
@@ -23,15 +24,7 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
     }),
     LoggerModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        pinoHttp: {
-          level: configService.get<string>('LOG_LEVEL', 'info'),
-          redact: {
-            paths: ['req.headers.authorization', 'req.headers.cookie'],
-            censor: '[REDACTED]',
-          },
-        },
-      }),
+      useFactory: (configService: ConfigService) => httpLogging(configService.get<string>('LOG_LEVEL', 'info')),
     }),
     PrismaModule,
     AuthModule,

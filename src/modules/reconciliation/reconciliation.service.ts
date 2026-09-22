@@ -1,3 +1,4 @@
+import { correlation, event } from '../../common/observability/observability.js';
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, Interval } from '@nestjs/schedule';
@@ -130,14 +131,20 @@ export class ReconciliationService {
       });
       if (!leased) return;
       leaseId = key;
-      if (batch.status === 'QUEUED') await this.run(batch.id, key);
-    } catch {
-      this.logger.error({ event: 'reconciliation.worker.failed', provider: 'ADDLIVETAG' });
+      if (batch.status === 'QUEUED') await correlation.run({ jobId: batch.id }, async () => {
+        const started = performance.now();
+        event('log', 'job.started', { batchId: batch.id });
+        await this.run(batch.id, key);
+        const completed = await this.repo.db.reconciliationBatch.findUnique({ where: { id: batch.id }, select: { status: true } });
+        event('log', 'job.completed', { batchId: batch.id, outcome: completed?.status, durationMs: Math.round(performance.now() - started) });
+      });
+    } catch (err) {
+      event('error', 'reconciliation.worker.failed', { provider: 'ADDLIVETAG', jobId: this.owner, err });
     } finally {
       if (leaseId)
         await this.repo.db.jobLease
           .deleteMany({ where: { id: leaseId, owner: this.owner } })
-          .catch(() => undefined);
+          .catch((err: unknown) => event('error', 'reconciliation.lease.release_failed', { jobId: this.owner, err }));
       this.busy = false;
     }
   }
@@ -255,6 +262,7 @@ export class ReconciliationService {
         records: received,
       });
     } catch (error) {
+      event('error', 'job.failed', { err: error });
       const code = error instanceof ProviderError ? error.code : 'RECONCILIATION_FAILED';
       if (code === 'PROVIDER_AUTH_EXPIRED' && version !== undefined)
         await this.credentials.mark(version, 'EXPIRED');

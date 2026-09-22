@@ -16,6 +16,17 @@ export class PrismaProductRepository extends ProductRepository {
     super();
   }
 
+  async upsert(data: CreateProductData): Promise<ProductRecord> {
+    const { id, ...update } = { ...data, ...this.toStorageRates(data) };
+    return this.fromStorage(
+      await this.prisma.product.upsert({
+        where: { shopId_itemId: { shopId: data.shopId, itemId: data.itemId } },
+        create: { id, ...update },
+        update,
+      }),
+    );
+  }
+
   async create(data: CreateProductData): Promise<ProductRecord> {
     return this.fromStorage(
       await this.prisma.product.create({ data: { ...data, ...this.toStorageRates(data) } }),
@@ -43,7 +54,7 @@ export class PrismaProductRepository extends ProductRepository {
         where,
         skip: options.skip,
         take: options.take,
-        orderBy: [{ shopId: 'desc' }, { itemId: 'desc' }],
+        orderBy: [{ shopId: options.sort ?? 'desc' }, { itemId: options.sort ?? 'desc' }, { id: options.sort ?? 'desc' }],
       }),
       this.prisma.product.count({ where }),
     ]);

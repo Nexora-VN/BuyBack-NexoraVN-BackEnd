@@ -5,6 +5,7 @@ export const environmentSchema = z
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     DATABASE_URL: z.url(),
+    CLERK_SYNC_SECRET: z.preprocess((value) => value === '' ? undefined : value, z.string().min(32).optional()),
     SHOPEE_AFFILIATE_ID: z.string().regex(/^\d+$/).optional(),
     ADDLIVETAG_API_KEY: z.preprocess(
       (v) => (v === '' ? undefined : v),

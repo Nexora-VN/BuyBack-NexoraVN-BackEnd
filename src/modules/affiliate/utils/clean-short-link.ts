@@ -1,6 +1,6 @@
 const SHORT_HOSTS = new Set(['vn.shp.ee', 'shp.ee', 's.shopee.vn', 'shope.ee']);
 
-function checkedUrl(input: string, base?: string): URL {
+export function checkedUrl(input: string, base?: string): URL {
   const url = new URL(input, base);
   if (
     url.protocol !== 'https:' ||
@@ -54,7 +54,7 @@ export async function makeCleanShortLink(input: string): Promise<string> {
       return `https://shopee.vn/product/${shopId}/${productId}`;
     }
 
-    try {
+    {
       const response = await fetch(url.href, {
         method: 'HEAD',
         redirect: 'manual',
@@ -70,13 +70,6 @@ export async function makeCleanShortLink(input: string): Promise<string> {
       }
 
       url = checkedUrl(location, url.href);
-    } catch (error) {
-      console.error('[makeCleanShortLink] fetch error:', {
-        url: url.href,
-        error,
-      });
-
-      throw error;
     }
   }
 

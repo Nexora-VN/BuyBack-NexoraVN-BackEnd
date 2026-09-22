@@ -20,11 +20,11 @@
     "test:e2e": "jest --config test/jest-e2e.config.cjs --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
-    "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate": "node scripts/migration-local.mjs",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "prisma:format": "prisma format",
-    "migrate:test": "prisma format && prisma validate && prisma migrate dev --create-only && prisma migrate deploy && prisma generate"
+    "migration:check": "prisma migrate status"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

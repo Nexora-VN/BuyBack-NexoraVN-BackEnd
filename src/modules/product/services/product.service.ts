@@ -17,7 +17,17 @@ export class ProductService {
     const shopId = BigInt(input.shopId);
     await this.ensureExternalIdsAvailable(itemId, shopId);
 
-    const product = await this.productRepository.create({
+    return this.toResponse(await this.productRepository.create(this.toCreateData(input)));
+  }
+
+  async upsertFromProvider(input: CreateProductDto): Promise<ProductResponseDto> {
+    return this.toResponse(await this.productRepository.upsert(this.toCreateData(input)));
+  }
+
+  private toCreateData(input: CreateProductDto): ProductRecord {
+    const itemId = BigInt(input.itemId);
+    const shopId = BigInt(input.shopId);
+    return {
       id: randomUUID(),
       itemId,
       shopId,
@@ -46,9 +56,7 @@ export class ProductService {
       capRow: BigInt(input.capRow),
       capAfterRate: BigInt(input.capAfterRate),
       lastUpdate: new Date(input.lastUpdate),
-    });
-
-    return this.toResponse(product);
+    };
   }
 
   async findMany(query: ListProductsQueryDto): Promise<ProductListResponseDto> {

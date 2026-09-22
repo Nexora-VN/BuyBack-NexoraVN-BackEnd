@@ -11,6 +11,12 @@ export class HealthController {
     private readonly database: DatabaseHealthIndicator,
   ) {}
 
+  @Get('live')
+  live() { return { status: 'ok' }; }
+
+  @Get('ready')
+  ready() { return this.database.readiness(); }
+
   @Get()
   @HealthCheck()
   @ApiOperation({ summary: 'Check API and database health' })
