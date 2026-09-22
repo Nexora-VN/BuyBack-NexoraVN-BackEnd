@@ -6,7 +6,13 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
-import { correlation, event, requestId, safeError, safePath } from './common/observability/observability.js';
+import {
+  correlation,
+  event,
+  requestId,
+  safeError,
+  safePath,
+} from './common/observability/observability.js';
 import { AppModule } from './app.module.js';
 
 export async function bootstrap(): Promise<NestFastifyApplication> {
@@ -17,22 +23,44 @@ export async function bootstrap(): Promise<NestFastifyApplication> {
 
   app.useLogger(app.get(Logger));
   app.enableShutdownHooks();
-  app.getHttpAdapter().getInstance().addHook('onRequest', (request: { id: string; headers: Record<string, unknown>; url: string }, reply: { header: (name: string, value: string) => void }, done: () => void) => {
-    request.id = requestId(request.headers['x-request-id']);
-    request.headers['x-request-id'] = request.id;
-    reply.header('X-Request-Id', request.id);
-    correlation.run({ requestId: request.id }, () => {
-      if (!request.url.includes('/health')) event('debug', 'http.started', { path: safePath(request.url) });
-      done();
-    });
-  });
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addHook(
+      'onRequest',
+      (
+        request: { id: string; headers: Record<string, unknown>; url: string },
+        reply: { header: (name: string, value: string) => void },
+        done: () => void,
+      ) => {
+        request.id = requestId(request.headers['x-request-id']);
+        request.headers['x-request-id'] = request.id;
+        reply.header('X-Request-Id', request.id);
+        correlation.run({ requestId: request.id }, () => {
+          if (!request.url.includes('/health'))
+            event('debug', 'http.started', { path: safePath(request.url) });
+          done();
+        });
+      },
+    );
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
       whitelist: true,
       forbidNonWhitelisted: true,
-      exceptionFactory: (errors) => new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Thông tin không hợp lệ.', details: errors.flatMap((error) => Object.keys(error.constraints ?? {}).map((code) => ({ field: error.property, code, message: 'Giá trị không hợp lệ.' }))) }),
+      exceptionFactory: (errors) =>
+        new BadRequestException({
+          code: 'VALIDATION_ERROR',
+          message: 'Thông tin không hợp lệ.',
+          details: errors.flatMap((error) =>
+            Object.keys(error.constraints ?? {}).map((code) => ({
+              field: error.property,
+              code,
+              message: 'Giá trị không hợp lệ.',
+            })),
+          ),
+        }),
     }),
   );
 

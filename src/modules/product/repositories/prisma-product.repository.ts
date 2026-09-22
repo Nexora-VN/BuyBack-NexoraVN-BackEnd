@@ -54,7 +54,11 @@ export class PrismaProductRepository extends ProductRepository {
         where,
         skip: options.skip,
         take: options.take,
-        orderBy: [{ shopId: options.sort ?? 'desc' }, { itemId: options.sort ?? 'desc' }, { id: options.sort ?? 'desc' }],
+        orderBy: [
+          { shopId: options.sort ?? 'desc' },
+          { itemId: options.sort ?? 'desc' },
+          { id: options.sort ?? 'desc' },
+        ],
       }),
       this.prisma.product.count({ where }),
     ]);

@@ -9,7 +9,6 @@ import { productProviderReferenceSchema } from '../../product/contracts/product-
 import { providerPayload } from '../../../../test/fixtures/product-provider.js';
 import { UserStatus } from '../../../common/domain/enums.js';
 
-
 jest.mock('../utils/generate-link-by-alt.js');
 jest.mock('../../product/utils/get-product-by-aff-id.js');
 
@@ -95,7 +94,9 @@ describe('GenerateAffiliateService', () => {
 
   it('rejects inactive users before requesting product data', async () => {
     users.getUserStatusById.mockResolvedValue({ status: 'INACTIVE', code: 'inactive' });
-    await expect(service.generateAffiliateLinkBySystem(input, 'user-id')).rejects.toMatchObject({ stage: 'validate_user' });
+    await expect(service.generateAffiliateLinkBySystem(input, 'user-id')).rejects.toMatchObject({
+      stage: 'validate_user',
+    });
     expect(getProductByUrl).not.toHaveBeenCalled();
   });
 
@@ -104,7 +105,10 @@ describe('GenerateAffiliateService', () => {
     'http://shopee.vn/product/1/2',
     'https://user@shopee.vn/product/1/2',
   ])('rejects invalid input %s before calling provider', async (url) => {
-    await expect(service.generateAffiliateLinkBySystem(url, 'user-id')).rejects.toMatchObject({ code: 'SHOPEE_LINK_INVALID', stage: 'validate_input' });
+    await expect(service.generateAffiliateLinkBySystem(url, 'user-id')).rejects.toMatchObject({
+      code: 'SHOPEE_LINK_INVALID',
+      stage: 'validate_input',
+    });
     expect(getProductByUrl).not.toHaveBeenCalled();
     expect(products.upsertFromProvider).not.toHaveBeenCalled();
     expect(repository.create).not.toHaveBeenCalled();
@@ -119,7 +123,10 @@ describe('GenerateAffiliateService', () => {
     const reference = productProviderReferenceSchema.parse(providerPayload);
     reference.productInfo.originLink = originLink;
     jest.mocked(getProductByUrl).mockResolvedValue(reference);
-    await expect(service.generateAffiliateLinkBySystem(input, 'user-id')).rejects.toMatchObject({ code: 'PROVIDER_PRODUCT_INVALID', stage: 'validate_product' });
+    await expect(service.generateAffiliateLinkBySystem(input, 'user-id')).rejects.toMatchObject({
+      code: 'PROVIDER_PRODUCT_INVALID',
+      stage: 'validate_product',
+    });
     expect(products.upsertFromProvider).not.toHaveBeenCalled();
     expect(repository.create).not.toHaveBeenCalled();
   });
@@ -132,7 +139,15 @@ describe('GenerateAffiliateService', () => {
       if (stage === 'product')
         products.upsertFromProvider.mockRejectedValue(new Error('database failure'));
       if (stage === 'history') repository.create.mockRejectedValue(new Error('database failure'));
-      await expect(service.generateAffiliateLinkBySystem(input, 'user-id')).rejects.toMatchObject({ code: 'INTERNAL_SERVER_ERROR', stage: stage === 'provider' ? 'fetch_product' : stage === 'product' ? 'upsert_product' : 'save_history' });
+      await expect(service.generateAffiliateLinkBySystem(input, 'user-id')).rejects.toMatchObject({
+        code: 'INTERNAL_SERVER_ERROR',
+        stage:
+          stage === 'provider'
+            ? 'fetch_product'
+            : stage === 'product'
+              ? 'upsert_product'
+              : 'save_history',
+      });
       if (stage !== 'history') expect(repository.create).not.toHaveBeenCalled();
       if (stage === 'provider') expect(products.upsertFromProvider).not.toHaveBeenCalled();
     },

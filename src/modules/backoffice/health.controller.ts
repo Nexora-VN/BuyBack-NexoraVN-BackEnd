@@ -12,10 +12,14 @@ export class HealthController {
   ) {}
 
   @Get('live')
-  live() { return { status: 'ok' }; }
+  live() {
+    return { status: 'ok' };
+  }
 
   @Get('ready')
-  ready() { return this.database.readiness(); }
+  ready() {
+    return this.database.readiness();
+  }
 
   @Get()
   @HealthCheck()

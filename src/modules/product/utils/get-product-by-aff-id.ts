@@ -9,7 +9,12 @@ const PRODUCT_PROVIDER_URL = 'https://data.addlivetag.com/product-data/product-d
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export class ProductProviderError extends AppError {
-  constructor(message: string, options?: ErrorOptions, code = 'PRODUCT_PROVIDER_INVALID_RESPONSE', status = 502) {
+  constructor(
+    message: string,
+    options?: ErrorOptions,
+    code = 'PRODUCT_PROVIDER_INVALID_RESPONSE',
+    status = 502,
+  ) {
     super(code, status, message, 'fetch_product', options?.cause);
     this.name = 'ProductProviderError';
   }
@@ -40,15 +45,23 @@ async function fetchProduct(fullUrl: URL): Promise<ProductProviderReference> {
     });
   } catch (error) {
     const timeout = error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name);
-    throw new ProductProviderError('Không thể kết nối API thông tin sản phẩm', { cause: error }, timeout ? 'AFFILIATE_PROVIDER_TIMEOUT' : 'AFFILIATE_PROVIDER_ERROR', timeout ? 504 : 502);
+    throw new ProductProviderError(
+      'Không thể kết nối API thông tin sản phẩm',
+      { cause: error },
+      timeout ? 'AFFILIATE_PROVIDER_TIMEOUT' : 'AFFILIATE_PROVIDER_ERROR',
+      timeout ? 504 : 502,
+    );
   }
 
-  event('debug', 'provider.response', { provider: 'AddLiveTag', stage: 'fetch_product', statusCode: response.status, durationMs: Math.round(performance.now() - started) });
+  event('debug', 'provider.response', {
+    provider: 'AddLiveTag',
+    stage: 'fetch_product',
+    statusCode: response.status,
+    durationMs: Math.round(performance.now() - started),
+  });
   if (!response.ok) {
     await response.body?.cancel();
-    throw new ProductProviderError(
-      'API thông tin sản phẩm tạm thời không khả dụng',
-    );
+    throw new ProductProviderError('API thông tin sản phẩm tạm thời không khả dụng');
   }
 
   let payload: unknown;
@@ -62,9 +75,7 @@ async function fetchProduct(fullUrl: URL): Promise<ProductProviderReference> {
 
   const result = productProviderReferenceSchema.safeParse(payload);
   if (!result.success) {
-    throw new ProductProviderError(
-      'Payload API thông tin sản phẩm không đúng contract',
-    );
+    throw new ProductProviderError('Payload API thông tin sản phẩm không đúng contract');
   }
 
   return result.data;

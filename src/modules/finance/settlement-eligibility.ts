@@ -49,7 +49,10 @@ export function commissionSettlementBlockers(row: {
 }
 
 /** Batch only the read model. Settlement still validates inside its transaction. */
-export async function batchProviderSettlementBlockers(db: Tx, checkouts: Checkout[]): Promise<Map<string, string[]>> {
+export async function batchProviderSettlementBlockers(
+  db: Tx,
+  checkouts: Checkout[],
+): Promise<Map<string, string[]>> {
   const supported = checkouts.filter((c) => c.provider.startsWith('ADDLIVETAG:'));
   const output = new Map<string, string[]>();
   const key = (c: Checkout) => `${c.provider}:${c.checkoutId}`;
@@ -60,8 +63,14 @@ export async function batchProviderSettlementBlockers(db: Tx, checkouts: Checkou
   const ids = [...new Set(supported.map((c) => c.checkoutId))];
   const [credential, issues, commissions] = await Promise.all([
     db.providerCredential.findUnique({ where: { id: 'ADDLIVETAG' } }),
-    db.reconciliationIssue.findMany({ where: { checkoutId: { in: ids }, status: 'OPEN' }, select: { provider: true, checkoutId: true } }),
-    db.commission.findMany({ where: { checkout: { checkoutId: { in: ids } }, state: { not: 'REJECTED' } }, select: { checkout: { select: { provider: true, checkoutId: true } } } }),
+    db.reconciliationIssue.findMany({
+      where: { checkoutId: { in: ids }, status: 'OPEN' },
+      select: { provider: true, checkoutId: true },
+    }),
+    db.commission.findMany({
+      where: { checkout: { checkoutId: { in: ids } }, state: { not: 'REJECTED' } },
+      select: { checkout: { select: { provider: true, checkoutId: true } } },
+    }),
   ]);
   const open = new Set(issues.map((issue) => `${issue.provider}:${issue.checkoutId}`));
   const providers = new Map<string, Set<string>>();
@@ -71,12 +80,21 @@ export async function batchProviderSettlementBlockers(db: Tx, checkouts: Checkou
     providers.set(checkout.checkoutId, set);
   }
   for (const c of checkouts) {
-    if (!c.provider.startsWith('ADDLIVETAG:')) { output.set(key(c), ['ADDLIVETAG_CHECKOUT_REQUIRED']); continue; }
+    if (!c.provider.startsWith('ADDLIVETAG:')) {
+      output.set(key(c), ['ADDLIVETAG_CHECKOUT_REQUIRED']);
+      continue;
+    }
     const blockers: string[] = [];
     if (paymentBlockers(c.payload).length) blockers.push('PROVIDER_COMMISSION_NOT_PAID');
-    if (!credential?.verifiedAt || credential.status !== 'ACTIVE' || credential.accountId !== c.accountId) blockers.push('VERIFY_ACCOUNT_AND_VND_FIRST');
+    if (
+      !credential?.verifiedAt ||
+      credential.status !== 'ACTIVE' ||
+      credential.accountId !== c.accountId
+    )
+      blockers.push('VERIFY_ACCOUNT_AND_VND_FIRST');
     if (open.has(key(c))) blockers.push('OPEN_RECONCILIATION_ISSUES');
-    if ([...(providers.get(c.checkoutId) ?? [])].some((p) => p !== c.provider)) blockers.push('CROSS_PROVIDER_DUPLICATE');
+    if ([...(providers.get(c.checkoutId) ?? [])].some((p) => p !== c.provider))
+      blockers.push('CROSS_PROVIDER_DUPLICATE');
     output.set(key(c), blockers);
   }
   return output;
