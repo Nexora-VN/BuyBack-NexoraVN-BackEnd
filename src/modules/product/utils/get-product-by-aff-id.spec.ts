@@ -1,70 +1,11 @@
 import { mapProviderProductToCreateDto } from '../mappers/product-provider.mapper.js';
-import { getProductByItemId, ProductProviderError } from './get-product-by-aff-id.js';
+import {
+  getProductByItemId,
+  getProductByUrl,
+  ProductProviderError,
+} from './get-product-by-aff-id.js';
 
-const providerPayload = {
-  status: 'success',
-  productInfo: {
-    itemId: 26771994719,
-    shopId: 46182105,
-    productName: 'Test Product',
-    shopName: 'Test Shop',
-    price: 134300,
-    sales: 1306,
-    imageUrl: '[https://cf.shopee.vn/file/example](https://cf.shopee.vn/file/example)',
-    productLink:
-      '[https://shopee.vn/product/46182105/26771994719](https://shopee.vn/product/46182105/26771994719)',
-    rating: '4.90',
-    commission: 14102,
-    sellerComFinal: 10744,
-    shopeeComFinal: 3358,
-    sellerRate: 0.08,
-    shopeeRate: 0.025,
-    sellerRatePercent: 8,
-    shopeeRatePercent: 2.5,
-    totalRatePercent: 10.5,
-    shopeeRateSource: 'api_or_db',
-    requestedBaseRate: null,
-    requestedCapRaw: null,
-    isXtra: true,
-    hasSellerCommission: true,
-    hasShopeeCommission: true,
-    isCapped: false,
-    isLimitCap: false,
-    cap: 40000,
-    capRaw: 40000,
-    capAfterRate: 40000,
-    lastUpdate: '2026-08-27 08:20:53',
-    dataSource: 'api',
-    priceStats: {
-      currentPrice: 134300,
-      minPrice: 120932,
-      maxPrice: 139400,
-      avgPrice: 136054.55319,
-      priceChange7d: 0,
-      priceChange30d: 600,
-      lastPriceUpdate: '2026-08-27',
-      lowestPriceDate: null,
-      highestPriceDate: null,
-    },
-    latestPriceHistory: {
-      price: 134300,
-      originalPrice: 134300,
-      discountPercent: 0,
-      currency: 'VND',
-      flashSale: false,
-      promotionId: null,
-      stockAvailable: 0,
-      recordedDate: '2026-08-27',
-      recordedTime: '2026-08-27 08:20:53',
-    },
-    originLink:
-      '[https://shopee.vn/product/46182105/26771994719](https://shopee.vn/product/46182105/26771994719)',
-    affiliateId: null,
-    subId: null,
-    affLink: null,
-  },
-  ignoredProviderField: true,
-};
+import { providerPayload } from '../../../../test/fixtures/product-provider.js';
 
 describe('getProductByItemId', () => {
   const originalFetch = global.fetch;
@@ -102,6 +43,74 @@ describe('getProductByItemId', () => {
       },
     });
     expect(reference).not.toHaveProperty('ignoredProviderField');
+  });
+
+  it('encodes the full input URL and makes only one product request', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(providerPayload)));
+    const input = 'https://s.shopee.vn/5q8MjSk534?foo=a&bar=b';
+    const result = await getProductByUrl(input);
+    const request = fetchMock.mock.calls[0]![0] as URL;
+    expect(request.searchParams.get('url')).toBe(input);
+    expect(request.searchParams.has('item_id')).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.productInfo.originLink).toBe('https://shopee.vn/product/46182105/26771994719');
+    expect(fetchMock.mock.calls[0]![1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('accepts the SOCUS response with category fields and no affiliate link', async () => {
+    const payload = structuredClone(providerPayload);
+    Object.assign(payload.productInfo, {
+      itemId: 51011334892,
+      shopId: 1675140528,
+      catId: 100869,
+      catIds: [100630, 100659, 100869],
+      catName: 'Dầu gội',
+      catPath: ['Sắc Đẹp', 'Chăm sóc tóc', 'Dầu gội'],
+      productName: 'Dầu gội thảo dược SOCUS 500g',
+      shopName: 'SOCUS SEA VN',
+      price: 142800,
+      commission: 17136,
+      sellerComFinal: 11424,
+      shopeeComFinal: 5712,
+      sellerRate: 0.08,
+      shopeeRate: 0.04,
+      sellerRatePercent: 8,
+      shopeeRatePercent: 4,
+      totalRatePercent: 12,
+      productLink: 'https://shopee.vn/product/1675140528/51011334892',
+      originLink: 'https://shopee.vn/product/1675140528/51011334892',
+      lastUpdate: '2026-09-22 04:27:42',
+      affiliateId: null,
+      subId: null,
+      affLink: null,
+    });
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify(payload)));
+    const reference = await getProductByUrl('https://s.shopee.vn/5q8MjSk534');
+    expect(mapProviderProductToCreateDto(reference.productInfo)).toMatchObject({
+      itemId: '51011334892',
+      shopId: '1675140528',
+      price: 142800,
+      commission: 17136,
+      originLink: 'https://shopee.vn/product/1675140528/51011334892',
+      lastUpdate: '2026-09-21T21:27:42.000Z',
+    });
+    expect(reference.productInfo.affLink).toBeNull();
+  });
+
+  it('wraps request timeouts', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new DOMException('timeout', 'TimeoutError'));
+    await expect(getProductByUrl('https://s.shopee.vn/example')).rejects.toBeInstanceOf(
+      ProductProviderError,
+    );
+  });
+
+  it('rejects invalid JSON', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response('not JSON'));
+    await expect(getProductByUrl('https://s.shopee.vn/example')).rejects.toThrow(
+      'JSON không hợp lệ',
+    );
   });
 
   it('maps provider names and date values to the Product create contract', async () => {

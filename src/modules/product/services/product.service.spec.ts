@@ -44,6 +44,11 @@ class InMemoryProductRepository extends ProductRepository {
   private readonly products = new Map<string, ProductRecord>();
   private readonly affiliateLinkCounts = new Map<string, number>();
 
+  async upsert(data: CreateProductData): Promise<ProductRecord> {
+    const existing = await this.findByExternalIds(data.itemId, data.shopId);
+    return this.create({ ...data, id: existing?.id ?? data.id });
+  }
+
   create(data: CreateProductData): Promise<ProductRecord> {
     this.products.set(data.id, data);
     return Promise.resolve(data);
@@ -108,6 +113,28 @@ class InMemoryProductRepository extends ProductRepository {
 describe('ProductService', () => {
   let repository: InMemoryProductRepository;
   let service: ProductService;
+
+  it('upserts provider data without replacing the product UUID', async () => {
+    const first = await service.upsertFromProvider(productInput);
+    const second = await service.upsertFromProvider({
+      ...productInput,
+      price: 142800,
+      commission: 17136,
+      sellerRate: 0.08,
+    });
+    expect(second.id).toBe(first.id);
+    expect(second).toMatchObject({
+      price: '142800',
+      commission: '17136',
+      sellerRate: 0.08,
+      productName: 'Test Product',
+    });
+    expect(() => JSON.stringify(second)).not.toThrow();
+    expect(await repository.findById(first.id)).toMatchObject({
+      price: 142800n,
+      commission: 17136n,
+    });
+  });
 
   beforeEach(() => {
     repository = new InMemoryProductRepository();

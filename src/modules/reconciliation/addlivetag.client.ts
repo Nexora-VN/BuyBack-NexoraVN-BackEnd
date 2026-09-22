@@ -1,3 +1,4 @@
+import { event } from '../../common/observability/observability.js';
 import { Injectable } from '@nestjs/common';
 import { setTimeout as delay } from 'node:timers/promises';
 import { decodeAddLiveTag } from './addlivetag.contract.js';
@@ -17,12 +18,14 @@ export class AddLiveTagClient {
       page_size: '50',
     }).toString();
     for (let attempt = 0; attempt <= 3; attempt++) {
+      const started = performance.now();
       try {
         const response = await fetch(url, {
           redirect: 'error',
           headers: { Accept: 'application/json' },
           signal: AbortSignal.timeout(30000),
         });
+        event('debug', 'provider.report.response', { provider: 'AddLiveTag', attempt, statusCode: response.status, durationMs: Math.round(performance.now() - started) });
         if (!response.ok) {
           await response.body?.cancel();
           if ([401, 403].includes(response.status))
@@ -50,15 +53,16 @@ export class AddLiveTagClient {
         let report: ReturnType<typeof decodeAddLiveTag>;
         try {
           report = decodeAddLiveTag(Buffer.concat(chunks).toString('utf8'));
-        } catch {
-          throw new ProviderError('PROVIDER_INVALID_CONTRACT');
+        } catch (cause) {
+          throw new ProviderError('PROVIDER_INVALID_CONTRACT', { cause });
         }
         if (report.meta.page !== page || report.meta.page_size !== 50 || report.data.length > 50)
           throw new ProviderError('PROVIDER_WRONG_PAGE');
         return report;
       } catch (error) {
         if (error instanceof ProviderError && error.code !== 'PROVIDER_RETRYABLE') throw error;
-        if (attempt === 3) throw new ProviderError('PROVIDER_UNAVAILABLE');
+        if (attempt === 3) throw new ProviderError('PROVIDER_UNAVAILABLE', { cause: error });
+        event('warn', 'provider.report.retry', { provider: 'AddLiveTag', attempt, durationMs: Math.round(performance.now() - started) });
         await delay(500 * 2 ** attempt);
       }
     }

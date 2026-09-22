@@ -48,6 +48,7 @@ export interface FindProductsResult {
 }
 
 export abstract class ProductRepository {
+  abstract upsert(data: CreateProductData): Promise<ProductRecord>;
   abstract create(data: CreateProductData): Promise<ProductRecord>;
   abstract findMany(options: FindProductsOptions): Promise<FindProductsResult>;
   abstract findById(id: string): Promise<ProductRecord | null>;
