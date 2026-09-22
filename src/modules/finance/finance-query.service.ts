@@ -148,33 +148,38 @@ export class FinanceQueryService {
           }),
           db.commission.count({ where }),
         ]);
-        const checkoutRows = data as { checkout: { provider: string; accountId: string; checkoutId: string; payload?: unknown } }[];
-        const providerBlockers = await batchProviderSettlementBlockers(db, checkoutRows.map((row) => row.checkout));
+        const checkoutRows = data as {
+          checkout: { provider: string; accountId: string; checkoutId: string; payload?: unknown };
+        }[];
+        const providerBlockers = await batchProviderSettlementBlockers(
+          db,
+          checkoutRows.map((row) => row.checkout),
+        );
         data = data.map((value) => {
-            const row = value as Awaited<
-              ReturnType<
-                typeof db.commission.findMany<{
-                  include: { checkout: true; settlementItem: true; cashback: true };
-                }>
-              >
-            >[number];
-            const blockers = [
-              ...commissionSettlementBlockers(row),
-              ...(providerBlockers.get(`${row.checkout.provider}:${row.checkout.checkoutId}`) ?? []),
-            ];
-            const { checkout, settlementItem: _item, ...safe } = row;
-            void _item;
-            return {
-              ...safe,
-              checkout: {
-                checkoutId: checkout.checkoutId,
-                purchasedAt: checkout.purchasedAt,
-                conversionState: checkout.conversionState,
-                provider: checkout.provider,
-              },
-              settlementEligibility: { eligible: blockers.length === 0, blockers },
-            };
-          });
+          const row = value as Awaited<
+            ReturnType<
+              typeof db.commission.findMany<{
+                include: { checkout: true; settlementItem: true; cashback: true };
+              }>
+            >
+          >[number];
+          const blockers = [
+            ...commissionSettlementBlockers(row),
+            ...(providerBlockers.get(`${row.checkout.provider}:${row.checkout.checkoutId}`) ?? []),
+          ];
+          const { checkout, settlementItem: _item, ...safe } = row;
+          void _item;
+          return {
+            ...safe,
+            checkout: {
+              checkoutId: checkout.checkoutId,
+              purchasedAt: checkout.purchasedAt,
+              conversionState: checkout.conversionState,
+              provider: checkout.provider,
+            },
+            settlementEligibility: { eligible: blockers.length === 0, blockers },
+          };
+        });
         break;
       }
       case 'cashbacks': {

@@ -24,7 +24,8 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
     }),
     LoggerModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => httpLogging(configService.get<string>('LOG_LEVEL', 'info')),
+      useFactory: (configService: ConfigService) =>
+        httpLogging(configService.get<string>('LOG_LEVEL', 'info')),
     }),
     PrismaModule,
     AuthModule,

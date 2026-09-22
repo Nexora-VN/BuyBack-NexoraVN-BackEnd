@@ -16,9 +16,7 @@ export class DatabaseHealthIndicator {
       await this.prisma.$queryRaw`SELECT 1`;
       return indicator.up();
     } catch {
-      return indicator.down(
-        'Database health check failed',
-      );
+      return indicator.down('Database health check failed');
     }
   }
   async readiness() {
@@ -35,5 +33,4 @@ export class DatabaseHealthIndicator {
       throw new ServiceUnavailableException('READINESS_FAILED', { cause });
     }
   }
-
 }

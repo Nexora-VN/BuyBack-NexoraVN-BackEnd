@@ -25,7 +25,12 @@ export class AddLiveTagClient {
           headers: { Accept: 'application/json' },
           signal: AbortSignal.timeout(30000),
         });
-        event('debug', 'provider.report.response', { provider: 'AddLiveTag', attempt, statusCode: response.status, durationMs: Math.round(performance.now() - started) });
+        event('debug', 'provider.report.response', {
+          provider: 'AddLiveTag',
+          attempt,
+          statusCode: response.status,
+          durationMs: Math.round(performance.now() - started),
+        });
         if (!response.ok) {
           await response.body?.cancel();
           if ([401, 403].includes(response.status))
@@ -62,7 +67,11 @@ export class AddLiveTagClient {
       } catch (error) {
         if (error instanceof ProviderError && error.code !== 'PROVIDER_RETRYABLE') throw error;
         if (attempt === 3) throw new ProviderError('PROVIDER_UNAVAILABLE', { cause: error });
-        event('warn', 'provider.report.retry', { provider: 'AddLiveTag', attempt, durationMs: Math.round(performance.now() - started) });
+        event('warn', 'provider.report.retry', {
+          provider: 'AddLiveTag',
+          attempt,
+          durationMs: Math.round(performance.now() - started),
+        });
         await delay(500 * 2 ** attempt);
       }
     }

@@ -4,14 +4,20 @@ import type { SubIds, GenerateLinkAddLiveTag } from '../dto/generate-link-alt.ty
 const ADD_LIVE_TAG_URL = 'https://addlivetag.com/short-link.php';
 const SHOP_SLUG = 'theanh-buyback';
 
-
 export const generateLinkByAddLiveTag = async (
   url: string,
   subIds: SubIds,
 ): Promise<GenerateLinkAddLiveTag | null> => {
   const started = performance.now();
   const fallback = (errorCode: string, statusCode?: number) => {
-    event('warn', 'provider.short_link.fallback', { provider: 'AddLiveTag', stage: 'generate_short_link', errorCode, statusCode, durationMs: Math.round(performance.now() - started), outcome: 'fallback' });
+    event('warn', 'provider.short_link.fallback', {
+      provider: 'AddLiveTag',
+      stage: 'generate_short_link',
+      errorCode,
+      statusCode,
+      durationMs: Math.round(performance.now() - started),
+      outcome: 'fallback',
+    });
     return null;
   };
   try {
@@ -42,7 +48,8 @@ export const generateLinkByAddLiveTag = async (
 
     const data = (await response.json()) as GenerateLinkAddLiveTag;
     // A JSON response alone is not success; malformed results must use the system fallback.
-    if (data?.success !== true || typeof data.affiliateLink !== 'string') return fallback('PROVIDER_INVALID_RESPONSE');
+    if (data?.success !== true || typeof data.affiliateLink !== 'string')
+      return fallback('PROVIDER_INVALID_RESPONSE');
     const link = new URL(data.affiliateLink);
     if (
       link.protocol !== 'https:' ||
@@ -52,9 +59,17 @@ export const generateLinkByAddLiveTag = async (
     )
       return fallback('PROVIDER_INVALID_LINK');
 
-    event('debug', 'provider.short_link.completed', { provider: 'AddLiveTag', durationMs: Math.round(performance.now() - started), outcome: 'success' });
+    event('debug', 'provider.short_link.completed', {
+      provider: 'AddLiveTag',
+      durationMs: Math.round(performance.now() - started),
+      outcome: 'success',
+    });
     return data;
   } catch (error) {
-    return fallback(error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name) ? 'PROVIDER_TIMEOUT' : 'PROVIDER_INVALID_OR_UNAVAILABLE');
+    return fallback(
+      error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name)
+        ? 'PROVIDER_TIMEOUT'
+        : 'PROVIDER_INVALID_OR_UNAVAILABLE',
+    );
   }
 };

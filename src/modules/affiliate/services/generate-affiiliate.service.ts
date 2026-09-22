@@ -39,7 +39,12 @@ export class GenerateAffiliateService {
     // Check User
     const user = await this.usersService.getUserStatusById(userId);
     if (user.status !== UserStatus.ACTIVE) {
-      throw new AppError(user.code ?? 'FORBIDDEN', 403, 'Tài khoản không thể tạo link.', 'validate_user');
+      throw new AppError(
+        user.code ?? 'FORBIDDEN',
+        403,
+        'Tài khoản không thể tạo link.',
+        'validate_user',
+      );
     }
     // Generate link
     return this.generateLinkBySystem(shopeeUrl, userId, 'web');
@@ -55,7 +60,11 @@ export class GenerateAffiliateService {
     let savedProductId: string | undefined;
     try {
       await step(stage, () => {
-        try { checkedUrl(url); } catch (cause) { throw new AppError('SHOPEE_LINK_INVALID', 400, 'Link Shopee không hợp lệ.', stage, cause); }
+        try {
+          checkedUrl(url);
+        } catch (cause) {
+          throw new AppError('SHOPEE_LINK_INVALID', 400, 'Link Shopee không hợp lệ.', stage, cause);
+        }
       });
       const affiliateId = this.configService.getOrThrow<string>('SHOPEE_AFFILIATE_ID');
       stage = 'fetch_product';
@@ -64,12 +73,28 @@ export class GenerateAffiliateService {
       const cleanLink = await step(stage, () => {
         try {
           const { shopId, productId } = parseShopeeProductUrl(productInfo.originLink);
-          if (BigInt(shopId) !== BigInt(productInfo.shopId) || BigInt(productId) !== BigInt(productInfo.itemId)) throw new Error('PROVIDER_PRODUCT_ID_MISMATCH');
+          if (
+            BigInt(shopId) !== BigInt(productInfo.shopId) ||
+            BigInt(productId) !== BigInt(productInfo.itemId)
+          )
+            throw new Error('PROVIDER_PRODUCT_ID_MISMATCH');
           return `https://shopee.vn/product/${shopId}/${productId}`;
-        } catch (cause) { throw new AppError('PROVIDER_PRODUCT_INVALID', 502, 'Thông tin sản phẩm chưa hợp lệ. Vui lòng thử lại.', stage, cause); }
+        } catch (cause) {
+          throw new AppError(
+            'PROVIDER_PRODUCT_INVALID',
+            502,
+            'Thông tin sản phẩm chưa hợp lệ. Vui lòng thử lại.',
+            stage,
+            cause,
+          );
+        }
       });
       stage = 'upsert_product';
-      const product = await step(stage, () => this.productService.upsertFromProvider(mapProviderProductToCreateDto({ ...productInfo, originLink: cleanLink })));
+      const product = await step(stage, () =>
+        this.productService.upsertFromProvider(
+          mapProviderProductToCreateDto({ ...productInfo, originLink: cleanLink }),
+        ),
+      );
       savedProductId = product.id;
 
       const affiliateLinkId = randomUUID();
@@ -92,7 +117,9 @@ export class GenerateAffiliateService {
       let generatedLink: string;
       // Prefer the provider short link; invalid/failed responses fall back to an_redir.
       stage = 'generate_short_link';
-      const addLiveTagResponse: GenerateLinkAddLiveTag | null = await step(stage, () => generateLinkByAddLiveTag(cleanLink, subIdsObjects));
+      const addLiveTagResponse: GenerateLinkAddLiveTag | null = await step(stage, () =>
+        generateLinkByAddLiveTag(cleanLink, subIdsObjects),
+      );
       if (addLiveTagResponse) {
         // The provider helper accepts only successful responses with a valid affiliate URL.
         generatedLink = addLiveTagResponse.affiliateLink;
@@ -110,27 +137,35 @@ export class GenerateAffiliateService {
       }
 
       stage = 'save_history';
-      await step(stage, () => this.affiliateRepository.create({
-        id: affiliateLinkId,
-        affiliateIdSnapshot: affiliateId,
-        userId,
-        productId: product.id,
-        originLink: url,
-        shortLink: addLiveTagResponse?.affiliateLink,
-        longLink: addLiveTagResponse?.altLink,
-        cleanLink,
-        subId1,
-        subId2,
-        subId3,
-        subId4,
-        subId5,
-        convertOrigin: ConvertOrigin.SYSTEM,
-        fullLinkSystem: generatedLink,
-        affiliateLinkStatus: AffiliateLinkStatus.WORKING,
-        createdBy: userId,
-        updatedBy: userId,
-      }));
-      event('log', 'generate.completed', { durationMs: Math.round(performance.now() - started), outcome: 'success', productId: savedProductId, affiliateLinkId, linkType: addLiveTagResponse ? 'short' : 'fallback' });
+      await step(stage, () =>
+        this.affiliateRepository.create({
+          id: affiliateLinkId,
+          affiliateIdSnapshot: affiliateId,
+          userId,
+          productId: product.id,
+          originLink: url,
+          shortLink: addLiveTagResponse?.affiliateLink,
+          longLink: addLiveTagResponse?.altLink,
+          cleanLink,
+          subId1,
+          subId2,
+          subId3,
+          subId4,
+          subId5,
+          convertOrigin: ConvertOrigin.SYSTEM,
+          fullLinkSystem: generatedLink,
+          affiliateLinkStatus: AffiliateLinkStatus.WORKING,
+          createdBy: userId,
+          updatedBy: userId,
+        }),
+      );
+      event('log', 'generate.completed', {
+        durationMs: Math.round(performance.now() - started),
+        outcome: 'success',
+        productId: savedProductId,
+        affiliateLinkId,
+        linkType: addLiveTagResponse ? 'short' : 'fallback',
+      });
 
       return {
         addLiveTagLink: addLiveTagResponse,
@@ -141,8 +176,20 @@ export class GenerateAffiliateService {
       };
     } catch (cause) {
       const error = cause instanceof AppError ? cause : databaseError(cause, stage);
-      event('debug', 'generate.failed', { stage, errorCode: error.code, durationMs: Math.round(performance.now() - started), productSaved: !!savedProductId });
-      if (!error.stage) throw new AppError(error.code, error.getStatus(), String((error.getResponse() as {message: string}).message), stage, cause);
+      event('debug', 'generate.failed', {
+        stage,
+        errorCode: error.code,
+        durationMs: Math.round(performance.now() - started),
+        productSaved: !!savedProductId,
+      });
+      if (!error.stage)
+        throw new AppError(
+          error.code,
+          error.getStatus(),
+          String((error.getResponse() as { message: string }).message),
+          stage,
+          cause,
+        );
       throw error;
     }
   }
