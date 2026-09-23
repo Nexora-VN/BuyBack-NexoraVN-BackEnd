@@ -11,7 +11,7 @@ export function checkoutDigest(rows: ConversionItem[]) {
   return (
     createHash('sha256')
       // Version the interpretation so unchanged snapshots are reprocessed after this fix.
-      .update('commission-payment-v2:')
+      .update('commission-payment-v3:')
       .update(process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES ?? '')
       .update(JSON.stringify(rows.map((r) => JSON.stringify(r)).sort()))
       .digest('hex')
@@ -101,7 +101,7 @@ export class AddLiveTagEngine {
           link.productId.replaceAll('-', '') !== a.product ||
           link.subId5 !== a.product ||
           link.subId3 !== a.channel ||
-          link.subId4 !== a.tracking ||
+          link.subId4?.replaceAll('_', '') !== a.tracking.replaceAll('_', '') ||
           rows.some((r) => r.sub_id1 && r.sub_id1 !== a.user)
         )
           throw new Error();

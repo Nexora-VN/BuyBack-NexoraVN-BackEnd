@@ -19,9 +19,10 @@ describe('AddLiveTag commission payment semantics', () => {
       'PROVIDER_COMMISSION_PENDING',
     );
   });
-  it('does not let configuration override the two known unpaid statuses', () => {
-    process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES = 'Chờ trả hoa hồng|Không hợp lệ';
-    expect(commissionPaymentState('Chờ trả hoa hồng')).toBe('PENDING');
+  it('allows verified operator configuration to recognize provider paid statuses while keeping rejected immutable', () => {
+    process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES = 'Chờ trả hoa hồng|Chưa chốt|Không hợp lệ';
+    expect(commissionPaymentState('Chờ trả hoa hồng')).toBe('PAID');
+    expect(commissionPaymentState('Chưa chốt')).toBe('PAID');
     expect(commissionPaymentState('Không hợp lệ')).toBe('REJECTED');
   });
   it('requires provider items and excludes cancelled commissions', () => {

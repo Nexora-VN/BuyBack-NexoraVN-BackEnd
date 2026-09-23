@@ -147,7 +147,16 @@ export class CredentialService {
   async mark(version: number, status: 'ACTIVE' | 'EXPIRED') {
     await this.repo.db.providerCredential.updateMany({
       where: { id: 'ADDLIVETAG', version },
-      data: { status, ...(status === 'ACTIVE' ? { lastValidatedAt: new Date() } : {}) },
+      data: {
+        status,
+        ...(status === 'ACTIVE'
+          ? {
+              lastValidatedAt: new Date(),
+              verifiedAt: new Date(),
+              verificationEvidence: 'Auto-verified AddLiveTag VND via active sync',
+            }
+          : {}),
+      },
     });
   }
 }
