@@ -61,7 +61,12 @@ export class AddLiveTagClient {
         } catch (cause) {
           throw new ProviderError('PROVIDER_INVALID_CONTRACT', { cause });
         }
-        if (report.meta.page !== page || report.meta.page_size !== 50 || report.data.length > 50)
+        const uniqueCheckoutsOnPage = new Set(report.data.map((r) => r.checkout_id)).size;
+        if (
+          report.meta.page !== page ||
+          report.meta.page_size !== 50 ||
+          uniqueCheckoutsOnPage > 50
+        )
           throw new ProviderError('PROVIDER_WRONG_PAGE');
         return report;
       } catch (error) {

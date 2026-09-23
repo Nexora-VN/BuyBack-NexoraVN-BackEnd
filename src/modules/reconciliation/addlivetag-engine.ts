@@ -23,7 +23,7 @@ export function inspectCheckout(rows: ConversionItem[]) {
   const conversion =
     states.size > 1
       ? 'PARTIALLY_VALIDATED'
-      : states.has('completed')
+      : states.has('completed') || states.has('paid')
         ? 'VALIDATED'
         : states.has('cancelled')
           ? 'REJECTED'
@@ -31,12 +31,13 @@ export function inspectCheckout(rows: ConversionItem[]) {
   if (
     rows.some(
       (r) =>
-        r.status_code === 'completed' && commissionPaymentState(r.commission_status) === 'UNKNOWN',
+        ['completed', 'paid'].includes(r.status_code) &&
+        commissionPaymentState(r.commission_status) === 'UNKNOWN',
     )
   )
     issues.add('UNKNOWN_COMMISSION_STATUS');
   if (conversion === 'PARTIALLY_VALIDATED') issues.add('PARTIAL_CHECKOUT_REVIEW');
-  if (rows.some((r) => !['completed', 'cancelled'].includes(r.status_code)))
+  if (rows.some((r) => !['completed', 'paid', 'cancelled'].includes(r.status_code)))
     issues.add('UNKNOWN_PROVIDER_STATUS');
   if (rows.some((r) => BigInt(r.mcn_fee) !== 0n)) issues.add('MCN_FEE_REVIEW');
   if (rows.some((r) => r.status_code === 'cancelled' && BigInt(r.commission) !== 0n))

@@ -16,5 +16,6 @@ describe('Exact finance arithmetic', () => {
       expect(() => parseAttribution(s)).toThrow();
     const id = 'a'.repeat(32);
     expect(parseAttribution([id, id, 'web', 'bb_' + id, id].join('-')).link).toBe(id);
+    expect(parseAttribution([id, id, 'web', 'bb' + id, id].join('-')).link).toBe(id);
   });
 });

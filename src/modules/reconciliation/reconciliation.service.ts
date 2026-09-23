@@ -240,8 +240,8 @@ export class ReconciliationService {
           commission += BigInt(row.commission);
         }
         received += report.data.length;
-        if (received > total) throw new ProviderError('PAGINATION_COUNT_MISMATCH');
-        if (received === total) {
+        if (groups.size > total) throw new ProviderError('PAGINATION_COUNT_MISMATCH');
+        if (groups.size === total) {
           if (commission !== BigInt(report.summary.estimated_total_commission))
             throw new ProviderError('SUMMARY_COMMISSION_MISMATCH');
           break;
