@@ -6,13 +6,14 @@ export function commissionPaymentState(
   status: string,
 ): 'PENDING' | 'REJECTED' | 'PAID' | 'UNKNOWN' {
   const label = status.trim().normalize('NFC');
-  if (label === 'Chờ trả hoa hồng' || label === 'Chưa chốt') return 'PENDING';
   if (label === 'Không hợp lệ') return 'REJECTED';
   const verifiedPaidLabels = (process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES ?? '')
     .split('|')
     .map((value) => value.trim().normalize('NFC'))
     .filter(Boolean);
-  return verifiedPaidLabels.includes(label) ? 'PAID' : 'UNKNOWN';
+  if (verifiedPaidLabels.includes(label)) return 'PAID';
+  if (label === 'Chờ trả hoa hồng' || label === 'Chưa chốt') return 'PENDING';
+  return 'UNKNOWN';
 }
 
 export function paymentBlockers(payload: unknown): string[] {
