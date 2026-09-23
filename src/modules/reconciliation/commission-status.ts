@@ -29,7 +29,7 @@ export function paymentBlockers(payload: unknown): string[] {
       if (String(row.commission) !== '0') blockers.add('CANCELLED_WITH_COMMISSION');
       continue;
     }
-    if (row.status_code !== 'completed') {
+    if (row.status_code !== 'completed' && row.status_code !== 'paid') {
       blockers.add('UNKNOWN_PROVIDER_STATUS');
       continue;
     }

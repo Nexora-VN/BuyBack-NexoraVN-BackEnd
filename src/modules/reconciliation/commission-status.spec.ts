@@ -15,6 +15,9 @@ describe('AddLiveTag commission payment semantics', () => {
     expect(
       paymentBlockers([{ status_code: 'completed', commission_status: 'Chờ trả hoa hồng' }]),
     ).toContain('PROVIDER_COMMISSION_PENDING');
+    expect(
+      paymentBlockers([{ status_code: 'paid', commission_status: 'Chưa chốt' }]),
+    ).toContain('PROVIDER_COMMISSION_PENDING');
   });
   it('does not let configuration override the two known unpaid statuses', () => {
     process.env.ADDLIVETAG_PAID_COMMISSION_STATUSES = 'Chờ trả hoa hồng|Không hợp lệ';

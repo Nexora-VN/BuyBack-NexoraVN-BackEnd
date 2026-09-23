@@ -38,7 +38,7 @@ export function parseAttribution(content: string) {
     !hex.test(link) ||
     !hex.test(product) ||
     !/^(web|ios|android)$/.test(channel ?? '') ||
-    !/^bb_[a-zA-Z0-9_]{20,32}$/.test(tracking)
+    !/^bb_?[a-zA-Z0-9_]{20,32}$/.test(tracking)
   )
     throw new Error('INVALID_ATTRIBUTION');
   return { user, link, channel: channel!, tracking, product };
