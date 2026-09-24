@@ -27,6 +27,7 @@ import { WithdrawalService } from './withdrawal.service.js';
 import {
   adjustmentInput,
   listInput,
+  policyInput,
   reason,
   settlementInput,
   validate,
@@ -262,5 +263,37 @@ export class FinanceAdminController {
         minWithdrawal: '50000',
       }
     );
+  }
+
+  @Put('policy')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiBody(schema(policyInput))
+  async updatePolicy(@Body() body: unknown, @CurrentUser() actor: AuthenticatedUser) {
+    const input = validate(policyInput, body);
+    const updated = await this.repo.db.affiliatePolicy.upsert({
+      where: { id: 1 },
+      create: {
+        id: 1,
+        userBps: input.userBps,
+        minWithdrawal: input.minWithdrawal ? BigInt(input.minWithdrawal) : 50000n,
+      },
+      update: {
+        userBps: input.userBps,
+        ...(input.minWithdrawal ? { minWithdrawal: BigInt(input.minWithdrawal) } : {}),
+      },
+    });
+    await this.repo.db.auditLog.create({
+      data: {
+        actorId: actor.id,
+        action: 'POLICY_UPDATED',
+        reference: 'policy:1',
+        metadata: {
+          userBps: input.userBps,
+          ratePercent: `${input.userBps / 100}%`,
+          minWithdrawal: input.minWithdrawal ?? '50000',
+        },
+      },
+    });
+    return updated;
   }
 }

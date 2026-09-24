@@ -126,7 +126,7 @@ export class FinanceQueryService {
                       state: true,
                       estimatedVnd: true,
                       settledVnd: true,
-                      cashback: { select: { state: true, userAmount: true } },
+                      cashback: { select: { state: true, userAmount: true, userBps: true } },
                     },
                   },
                 },
@@ -162,7 +162,7 @@ export class FinanceQueryService {
               state: string;
               estimatedVnd: bigint;
               settledVnd: bigint;
-              cashback: { state: string; userAmount: bigint } | null;
+              cashback: { state: string; userAmount: bigint; userBps?: number } | null;
             } | null;
           };
         }>;
@@ -462,8 +462,7 @@ export class FinanceQueryService {
       }));
       const totalAmountVnd = snapshots
         .reduce(
-          (sum, item) =>
-            sum + BigInt((item.order_value as string) || (item.price as string) || 0),
+          (sum, item) => sum + BigInt((item.order_value as string) || (item.price as string) || 0),
           0n,
         )
         .toString();
@@ -521,6 +520,7 @@ export class FinanceQueryService {
                 cashback: row.checkout.commission.cashback && {
                   state: row.checkout.commission.cashback.state,
                   userAmount: row.checkout.commission.cashback.userAmount,
+                  userBps: row.checkout.commission.cashback.userBps,
                 },
               },
             }
@@ -572,6 +572,7 @@ export class FinanceQueryService {
           cashback: checkout.commission.cashback && {
             state: checkout.commission.cashback.state,
             userAmount: checkout.commission.cashback.userAmount,
+            userBps: checkout.commission.cashback.userBps,
           },
         },
       },

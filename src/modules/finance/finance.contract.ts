@@ -68,3 +68,9 @@ export class SchemaPipe<T> implements PipeTransform {
     return validate(this.schema, value);
   }
 }
+
+export const policyInput = z.object({
+  userBps: z.coerce.number().int().min(100).max(10000),
+  minWithdrawal: z.string().regex(/^\d+$/).optional(),
+});
+export type PolicyInput = z.infer<typeof policyInput>;
