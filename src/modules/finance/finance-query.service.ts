@@ -43,6 +43,20 @@ function enumStatus<T extends string>(
   if (!allowed.includes(value as T)) throw new BadRequestException('INVALID_STATUS_FILTER');
   return value as T;
 }
+
+export function detectPlatform(provider?: string, affiliate?: string, url?: string): string {
+  const text = `${provider ?? ''} ${affiliate ?? ''} ${url ?? ''}`.toLowerCase();
+  if (text.includes('tiktok')) return 'TikTok Shop';
+  if (text.includes('lazada')) return 'Lazada';
+  if (
+    text.includes('shopee') ||
+    text.includes('shp.ee') ||
+    (provider && provider.startsWith('ADDLIVETAG'))
+  )
+    return 'Shopee';
+  return 'Shopee';
+}
+
 @Injectable()
 export class FinanceQueryService {
   constructor(
@@ -86,6 +100,7 @@ export class FinanceQueryService {
               id: true,
               orderId: true,
               orderSn: true,
+              provider: true,
               payload: true,
               status: true,
               createdAt: true,
@@ -111,7 +126,7 @@ export class FinanceQueryService {
                       state: true,
                       estimatedVnd: true,
                       settledVnd: true,
-                      cashback: { select: { state: true, userAmount: true } },
+                      cashback: { select: { state: true, userAmount: true, userBps: true } },
                     },
                   },
                 },
@@ -120,6 +135,95 @@ export class FinanceQueryService {
           }),
           db.providerOrder.count({ where }),
         ]);
+
+        const orderRows = data as Array<{
+          id: string;
+          orderId: string;
+          orderSn: string;
+          provider: string;
+          payload: unknown;
+          status: string;
+          createdAt: Date;
+          items: Array<{
+            id: string;
+            itemId: string;
+            payload: unknown;
+            status: string;
+            itemPriceRaw: bigint;
+            actualAmountRaw: bigint;
+            refundedAmountRaw: bigint;
+            scale: number;
+          }>;
+          checkout: {
+            purchasedAt: Date;
+            conversionState: string;
+            commission: {
+              id: string;
+              state: string;
+              estimatedVnd: bigint;
+              settledVnd: bigint;
+              cashback: { state: string; userAmount: bigint; userBps?: number } | null;
+            } | null;
+          };
+        }>;
+
+        data = orderRows.map((row) => {
+          const snapshots = Array.isArray(row.payload)
+            ? (row.payload as Record<string, unknown>[])
+            : [];
+
+          let primaryItem: Record<string, unknown> | undefined;
+          if (snapshots.length > 0 && snapshots[0]) {
+            const firstSnapshot = snapshots[0];
+            primaryItem = snapshots.reduce<Record<string, unknown>>((max, item) => {
+              const maxVal = BigInt((max.order_value as string) || (max.price as string) || 0);
+              const curVal = BigInt((item.order_value as string) || (item.price as string) || 0);
+              return curVal > maxVal ? item : max;
+            }, firstSnapshot);
+          } else if (row.items && row.items.length > 0 && row.items[0]) {
+            const first = row.items[0];
+            const p = (first.payload as Record<string, unknown>) || {};
+            primaryItem = {
+              item_name: p.item_name || first.itemId,
+              image: p.image || p.imageUrl || null,
+              order_value: first.actualAmountRaw?.toString() || '0',
+            };
+          }
+
+          const totalAmountVnd =
+            snapshots.length > 0
+              ? snapshots
+                  .reduce(
+                    (sum, item) =>
+                      sum + BigInt((item.order_value as string) || (item.price as string) || 0),
+                    0n,
+                  )
+                  .toString()
+              : (row.items || [])
+                  .reduce((sum, item) => sum + BigInt(item.actualAmountRaw || 0), 0n)
+                  .toString();
+
+          const platform = detectPlatform(
+            row.provider,
+            primaryItem?.affiliate as string | undefined,
+            primaryItem?.item_url as string | undefined,
+          );
+
+          const productSummary = {
+            name: (primaryItem?.item_name as string) || null,
+            imageUrl: (primaryItem?.image as string) || null,
+            itemCount: snapshots.length || (row.items?.length ?? 1),
+            totalAmountVnd,
+            platform,
+          };
+
+          return {
+            ...row,
+            productSummary,
+            platform,
+            totalAmountVnd,
+          };
+        });
         break;
       }
       case 'commissions': {
@@ -356,6 +460,17 @@ export class FinanceQueryService {
         image: item.image,
         qty: item.qty,
       }));
+      const totalAmountVnd = snapshots
+        .reduce(
+          (sum, item) => sum + BigInt((item.order_value as string) || (item.price as string) || 0),
+          0n,
+        )
+        .toString();
+      const platform = detectPlatform(
+        row.provider,
+        snapshots[0]?.affiliate as string | undefined,
+        snapshots[0]?.item_url as string | undefined,
+      );
       const issues = userId
         ? undefined
         : await this.repo.db.reconciliationIssue.findMany({
@@ -391,6 +506,8 @@ export class FinanceQueryService {
         orderSn: row.orderSn,
         status: row.status,
         provider: row.provider,
+        platform,
+        totalAmountVnd,
         items,
         checkout: userId
           ? {
@@ -403,6 +520,7 @@ export class FinanceQueryService {
                 cashback: row.checkout.commission.cashback && {
                   state: row.checkout.commission.cashback.state,
                   userAmount: row.checkout.commission.cashback.userAmount,
+                  userBps: row.checkout.commission.cashback.userBps,
                 },
               },
             }
@@ -416,16 +534,34 @@ export class FinanceQueryService {
             }),
       };
     }
-    if (!userId) return row;
+    if (!userId) {
+      const platform = detectPlatform(row.provider);
+      const totalAmountVnd = row.items
+        .reduce((sum, item) => sum + BigInt(item.actualAmountRaw || 0), 0n)
+        .toString();
+      return { ...row, platform, totalAmountVnd };
+    }
     // Provider raw data contains account/traffic metadata, only expose financial and item fields to users.
     const { payload: _raw, checkout, items, ...order } = row;
     void _raw;
+    const totalAmountVnd = items
+      .reduce((sum, item) => sum + BigInt(item.actualAmountRaw || 0), 0n)
+      .toString();
+    const platform = detectPlatform(row.provider);
     return {
       ...order,
-      items: items.map(({ payload, ...item }) => ({
-        ...item,
-        itemName: (payload as Record<string, unknown>).item_name,
-      })),
+      platform,
+      totalAmountVnd,
+      items: items.map(({ payload, ...item }) => {
+        const p = (payload as Record<string, unknown>) || {};
+        return {
+          ...item,
+          itemName: (p.item_name as string) || (p.itemName as string) || item.itemId,
+          image: (p.image as string) || (p.imageUrl as string) || null,
+          itemUrl: (p.item_url as string) || (p.itemUrl as string) || null,
+          qty: (p.qty as number) || 1,
+        };
+      }),
       checkout: {
         purchasedAt: checkout.purchasedAt,
         conversionState: checkout.conversionState,
@@ -436,6 +572,7 @@ export class FinanceQueryService {
           cashback: checkout.commission.cashback && {
             state: checkout.commission.cashback.state,
             userAmount: checkout.commission.cashback.userAmount,
+            userBps: checkout.commission.cashback.userBps,
           },
         },
       },

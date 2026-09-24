@@ -9,10 +9,17 @@ import { providerPayload } from '../../../../test/fixtures/product-provider.js';
 
 describe('getProductByItemId', () => {
   const originalFetch = global.fetch;
+  const originalAddLiveTagKey = process.env.ADDLIVETAG_API_KEY;
+
+  beforeEach(() => {
+    delete process.env.ADDLIVETAG_API_KEY;
+  });
 
   afterEach(() => {
     global.fetch = originalFetch;
     jest.restoreAllMocks();
+    if (originalAddLiveTagKey === undefined) delete process.env.ADDLIVETAG_API_KEY;
+    else process.env.ADDLIVETAG_API_KEY = originalAddLiveTagKey;
   });
 
   it('returns a validated reusable reference and normalizes IDs and URLs', async () => {
@@ -148,5 +155,55 @@ describe('getProductByItemId', () => {
     await expect(getProductByItemId('26771994719')).rejects.toThrow(
       'Payload API thông tin sản phẩm không đúng contract',
     );
+  });
+
+  it('attaches api_key to search params and headers for getProductByItemId when ADDLIVETAG_API_KEY is configured', async () => {
+    process.env.ADDLIVETAG_API_KEY = 'test-addlivetag-key-12345';
+    const fetchMock = jest.fn().mockResolvedValue(
+      new Response(JSON.stringify(providerPayload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    global.fetch = fetchMock;
+
+    await getProductByItemId('26771994719');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const calledUrl = fetchMock.mock.calls[0]![0] as URL;
+    expect(calledUrl.searchParams.get('item_id')).toBe('26771994719');
+    expect(calledUrl.searchParams.get('api_key')).toBe('test-addlivetag-key-12345');
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({
+      headers: {
+        accept: 'application/json',
+        api_key: 'test-addlivetag-key-12345',
+        'x-api-key': 'test-addlivetag-key-12345',
+      },
+    });
+  });
+
+  it('attaches api_key to search params and headers for getProductByUrl when ADDLIVETAG_API_KEY is configured', async () => {
+    process.env.ADDLIVETAG_API_KEY = 'test-addlivetag-key-12345';
+    const fetchMock = jest.fn().mockResolvedValue(
+      new Response(JSON.stringify(providerPayload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    global.fetch = fetchMock;
+
+    await getProductByUrl('https://s.shopee.vn/5q8MjSk534');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const calledUrl = fetchMock.mock.calls[0]![0] as URL;
+    expect(calledUrl.searchParams.get('url')).toBe('https://s.shopee.vn/5q8MjSk534');
+    expect(calledUrl.searchParams.get('api_key')).toBe('test-addlivetag-key-12345');
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({
+      headers: {
+        accept: 'application/json',
+        api_key: 'test-addlivetag-key-12345',
+        'x-api-key': 'test-addlivetag-key-12345',
+      },
+    });
   });
 });

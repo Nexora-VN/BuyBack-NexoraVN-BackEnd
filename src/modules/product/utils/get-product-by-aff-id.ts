@@ -36,11 +36,20 @@ export const getProductByUrl = async (url: string): Promise<ProductProviderRefer
 };
 
 async function fetchProduct(fullUrl: URL): Promise<ProductProviderReference> {
+  const apiKey = process.env.ADDLIVETAG_API_KEY;
+  if (apiKey && !fullUrl.searchParams.has('api_key')) {
+    fullUrl.searchParams.set('api_key', apiKey);
+  }
+
   const started = performance.now();
   let response: Response;
   try {
+    const headers: Record<string, string> = {
+      accept: 'application/json',
+      ...(apiKey ? { api_key: apiKey, 'x-api-key': apiKey } : {}),
+    };
     response = await fetch(fullUrl, {
-      headers: { accept: 'application/json' },
+      headers,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (error) {

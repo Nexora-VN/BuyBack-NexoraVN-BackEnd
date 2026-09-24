@@ -266,14 +266,20 @@ export class AddLiveTagEngine {
     amount: bigint,
     state: 'PENDING' | 'VALIDATED' | 'REJECTED',
   ) {
-    await tx.affiliatePolicy.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    const policy = await tx.affiliatePolicy.upsert({
+      where: { id: 1 },
+      create: { id: 1 },
+      update: {},
+    });
     const existing = await tx.cashbackAllocation.findUnique({ where: { commissionId } });
-    const split = splitCashback(amount, BigInt(existing?.userBps ?? 8500));
+    const userBps = existing?.userBps ?? policy.userBps ?? 8500;
+    const split = splitCashback(amount, BigInt(userBps));
     await tx.cashbackAllocation.upsert({
       where: { commissionId },
       create: {
         commissionId,
         policyId: 1,
+        userBps,
         userAmount: split.user,
         platformAmount: split.platform,
         state,
