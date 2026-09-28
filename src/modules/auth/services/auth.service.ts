@@ -99,8 +99,7 @@ export class AuthService {
             email_verified?: string | boolean;
             name?: string;
           };
-          const isVerified =
-            payload.email_verified === 'true' || payload.email_verified === true;
+          const isVerified = payload.email_verified === 'true' || payload.email_verified === true;
           if (payload.email && isVerified) {
             email = payload.email;
             name = payload.name;
@@ -136,7 +135,9 @@ export class AuthService {
     }
 
     if (!email) {
-      throw new UnauthorizedException('Xác thực Google thất bại. Token không hợp lệ hoặc đã hết hạn.');
+      throw new UnauthorizedException(
+        'Xác thực Google thất bại. Token không hợp lệ hoặc đã hết hạn.',
+      );
     }
 
     const resolvedName = name || input.fullName || input.displayName;
