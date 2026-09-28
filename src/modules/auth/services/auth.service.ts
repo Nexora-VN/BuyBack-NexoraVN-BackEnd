@@ -5,6 +5,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { UserStatus } from '../../../common/domain/enums.js';
 import type { AuthTokensResponseDto } from '../dto/auth-response.dto.js';
+import type { GoogleLoginDto } from '../dto/google-login.dto.js';
 import type { LoginDto } from '../dto/login.dto.js';
 import type { AuthenticatedUser } from '../interfaces/authenticated-user.js';
 import type { JwtClaims, JwtTokenType } from '../interfaces/jwt-claims.js';
@@ -78,6 +79,75 @@ export class AuthService {
     });
 
     return tokens;
+  }
+
+  async loginWithGoogle(
+    input: GoogleLoginDto,
+    metadata: AuthRequestMetadata,
+  ): Promise<AuthTokensResponseDto> {
+    let email: string | undefined;
+    let name: string | undefined;
+
+    if (input.idToken) {
+      try {
+        const res = await fetch(
+          `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(input.idToken)}`,
+        );
+        if (res.ok) {
+          const payload = (await res.json()) as {
+            email?: string;
+            email_verified?: string | boolean;
+            name?: string;
+          };
+          const isVerified =
+            payload.email_verified === 'true' || payload.email_verified === true;
+          if (payload.email && isVerified) {
+            email = payload.email;
+            name = payload.name;
+          }
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    if (!email && input.accessToken) {
+      try {
+        const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${input.accessToken}` },
+        });
+        if (res.ok) {
+          const payload = (await res.json()) as {
+            email?: string;
+            email_verified?: boolean;
+            name?: string;
+          };
+          if (
+            payload.email &&
+            (payload.email_verified === true || payload.email_verified === undefined)
+          ) {
+            email = payload.email;
+            name = payload.name;
+          }
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    if (!email) {
+      throw new UnauthorizedException('Xác thực Google thất bại. Token không hợp lệ hoặc đã hết hạn.');
+    }
+
+    const resolvedName = name || input.fullName || input.displayName;
+    return this.loginWithClerk(
+      {
+        email,
+        fullName: resolvedName,
+        displayName: resolvedName,
+      },
+      metadata,
+    );
   }
 
   async refresh(refreshToken: string): Promise<AuthTokensResponseDto> {
