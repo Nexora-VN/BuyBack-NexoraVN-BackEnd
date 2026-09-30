@@ -3,22 +3,25 @@
 > **Ngày lập**: 30/09/2026  
 > **Server đích**: `14.225.224.82` (User SSH: `theanh`, Port: `22`)  
 > **Server cũ**: `4.213.53.132` (User SSH cũ: `deploy`)  
-> **Mục tiêu**: Tạo ngăn độc lập cho dự án Nexora (Buyback) trên VPS mới, chuyển CI/CD GitHub Actions về đây, đảm bảo bảo mật và không ảnh hưởng các dự án đang chạy khác trên VPS.
+> **Mục tiêu**: Tạo ngăn độc lập cho dự án Nexora (Buyback) trên VPS mới, chuyển CI/CD GitHub Actions về đây, giới hạn tài nguyên an toàn và không làm ảnh hưởng các dự án đang chạy khác trên VPS.
 
 ---
 
 ## 1. Bối cảnh hạ tầng VPS mới (`14.225.224.82`)
 
 Server này đang được chia sẻ (Multi-tenant) cho nhiều bên/dự án khác nhau:
+
 1. **User `mhnam`**: Đang chạy Rootless Docker (đã chiếm cổng `3000`, `3005`, `7777`).
 2. **Các Container LXD**: Server có ít nhất 3 container độc lập (UID `1000000`) chạy cổng SSH `2202, 2203, 2204` và cổng ứng dụng `8002-8004`, `9002-9004`.
 3. **aaPanel Web Control Panel**: Đang chạy ở cổng **`40831`**.
 4. **Hệ thống Nginx chung**: Đang giữ cổng `80` và `443` để tiếp nhận traffic bên ngoài.
 
 **Nguyên tắc triển khai**:
-* Không dùng tài khoản `root` cho CI/CD.
-* Quy hoạch cổng riêng biệt: Frontend (`127.0.0.1:3002`), Backend (`127.0.0.1:3001`), Postgres chạy nội bộ trong mạng Docker `buyback-network`.
-* Cách ly quyền truy cập tập tin: User `theanh` có thư mục `/home/theanh` được phân quyền `chmod 750`.
+
+- Không dùng tài khoản `root` cho CI/CD.
+- Quy hoạch cổng riêng biệt: Frontend (`127.0.0.1:3002`), Backend (`127.0.0.1:3001`), Postgres chạy nội bộ trong mạng Docker `buyback-network`.
+- Cách ly quyền truy cập tập tin: User `theanh` có thư mục `/home/theanh` được phân quyền `chmod 750`.
+- **Giới hạn tài nguyên ngăn**: Khống chế CPU & RAM tối đa cho stack Nexora để không bao giờ nuốt cạn tài nguyên VPS làm chậm các dịch vụ khác.
 
 ---
 
@@ -35,35 +38,57 @@ Server này đang được chia sẻ (Multi-tenant) cho nhiều bên/dự án kh
 
 ## 3. Những việc CẦN LÀM TIẾP THEO (Handover Checklist)
 
-### Giai đoạn 1: Chuẩn bị hạ tầng ban đầu trên VPS
+### Giai đoạn 1: Chuẩn bị hạ tầng & Giới hạn tài nguyên trên VPS
 
 Thực hiện trên terminal VPS `root@vps:~#`:
 
 #### 1. Tạo symlink đường dẫn (để tương thích kịch bản deploy):
+
 ```bash
 ln -s /home/theanh /home/deploy
 ```
 
-#### 2. Chuyển sang user `theanh` và tạo thư mục dự án:
+#### 2. Cấu hình Giới hạn tài nguyên cấp Hệ điều hành (Systemd Cgroups):
+
+VPS có tổng cộng **10 vCPU và 16GB RAM**. Ta giới hạn user `theanh` chỉ được dùng tối đa **4 vCPU Cores và 4GB RAM** (tránh trường hợp script hoặc app leak tài nguyên ảnh hưởng các ngăn khác):
+
+```bash
+# 400% = 4 Cores CPU, MemoryMax = 4GB RAM
+systemctl set-property user-$(id -u theanh).slice CPUQuota=400% MemoryMax=4G
+
+# Kiểm tra xác nhận:
+systemctl show user-$(id -u theanh).slice | grep -E "CPUQuota|MemoryMax"
+```
+
+#### 3. Chuyển sang user `theanh` và tạo thư mục dự án:
+
 ```bash
 su - theanh
 mkdir -p /home/theanh/buyback/backend
 cd /home/theanh/buyback
 ```
 
-#### 3. Đăng nhập Docker vào GitHub Container Registry (GHCR):
-*(Cần Personal Access Token của GitHub có quyền `read:packages` để server kéo được Docker image private)*
+#### 4. Đăng nhập Docker vào GitHub Container Registry (GHCR):
+
+_(Cần Personal Access Token của GitHub có quyền `read:packages` để server kéo được Docker image private)_
+
 ```bash
 echo "<GITHUB_PAT_TOKEN>" | docker login ghcr.io -u <GITHUB_USERNAME> --password-stdin
 ```
 
-#### 4. Tạo Docker network nội bộ:
+#### 5. Tạo Docker network nội bộ:
+
 ```bash
 docker network create buyback-network
 ```
 
-#### 5. Tạo file `docker-compose.yml` tại `/home/theanh/buyback/docker-compose.yml`:
-*(Lưu ý: Bắt buộc phải có healthcheck để script `deploy-production.sh` không báo lỗi)*
+#### 6. Tạo file `docker-compose.yml` tại `/home/theanh/buyback/docker-compose.yml`:
+
+> **Lưu ý quan trọng**:
+>
+> - File đã được cấu hình **Healthcheck** bắt buộc để script `deploy-production.sh` không bị abort.
+> - Đã thêm **Resource Limits** (CPU / RAM) trực tiếp cho từng container.
+
 ```bash
 cat << 'EOF' > /home/theanh/buyback/docker-compose.yml
 services:
@@ -79,6 +104,11 @@ services:
       - buyback-postgres-data:/var/lib/postgresql
     networks:
       - buyback-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U buyback -d buyback']
       interval: 5s
@@ -98,6 +128,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1536M
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/health/live || exit 1"]
       interval: 10s
@@ -113,6 +148,11 @@ services:
       - "127.0.0.1:3002:3000"
     networks:
       - buyback-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1536M
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
       interval: 10s
@@ -129,7 +169,8 @@ networks:
 EOF
 ```
 
-#### 6. Tạo file môi trường Backend tại `/home/theanh/buyback/backend/.env.prod`:
+#### 7. Tạo file môi trường Backend tại `/home/theanh/buyback/backend/.env.prod`:
+
 ```bash
 cat << 'EOF' > /home/theanh/buyback/backend/.env.prod
 NODE_ENV=production
@@ -146,7 +187,8 @@ EOF
 chmod 600 /home/theanh/buyback/backend/.env.prod
 ```
 
-#### 7. Khởi động DB Postgres:
+#### 8. Khởi động DB Postgres:
+
 ```bash
 docker compose -p buyback up -d postgres
 ```
@@ -173,6 +215,7 @@ docker compose -p buyback up -d postgres
 ### Giai đoạn 3: Cấu hình Reverse Proxy & SSL (Domain)
 
 Vì Nginx hệ thống và aaPanel (cổng `40831`) đang quản lý cổng 80 & 443:
+
 - Truy cập aaPanel: `http://14.225.224.82:40831`
 - Vào **Website** > **Add Site**:
   - Tên miền website (ví dụ: `app.nexora.vn`) ➡️ Tạo Reverse Proxy trỏ đến `http://127.0.0.1:3002`.
