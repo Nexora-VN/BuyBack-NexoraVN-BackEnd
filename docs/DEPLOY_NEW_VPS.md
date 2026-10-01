@@ -134,7 +134,7 @@ services:
           cpus: '1.5'
           memory: 1536M
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/api/v1/health/live || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8080/api/v1/health/live || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -156,7 +156,7 @@ services:
           cpus: '1.5'
           memory: 1536M
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
