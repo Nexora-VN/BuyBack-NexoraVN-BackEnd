@@ -134,7 +134,7 @@ services:
           cpus: '1.5'
           memory: 1536M
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/live || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/api/v1/health/live || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -237,6 +237,6 @@ Vì Nginx hệ thống và aaPanel (cổng `40831`) đang quản lý cổng 80 &
    docker logs --tail 50 buyback-frontend
    ```
 4. Kiểm tra sức khỏe hệ thống:
-   - Backend: `curl http://127.0.0.1:3001/health/live` (kết quả trả về `{"status":"ok"}`).
+   - Backend: `curl http://127.0.0.1:3001/api/v1/health/live` (kết quả trả về `{"status":"ok"}`).
    - Frontend: `curl -I http://127.0.0.1:3002`.
    - Kiểm tra các tiến trình của `mhnam` và các container khác để đảm bảo không bị ảnh hưởng.
