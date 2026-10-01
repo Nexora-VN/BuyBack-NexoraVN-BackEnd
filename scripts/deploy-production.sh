@@ -7,7 +7,7 @@ service="${1:?service required}"
 image="${2:?immutable image required}"
 revision="${3:?commit SHA required}"
 run_number="${4:?workflow run number required}"
-deploy_dir=/home/deploy/buyback
+deploy_dir=/home/theanh/buyback
 case "$service" in
   backend) expected_repo=ghcr.io/nexora-vn/buyback-nexoravn-backend ;;
   frontend) expected_repo=ghcr.io/nexora-vn/buyback-nexoravn-frontend ;;
