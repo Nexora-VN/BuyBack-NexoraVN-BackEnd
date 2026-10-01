@@ -134,7 +134,7 @@ services:
           cpus: '1.5'
           memory: 1536M
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/api/v1/health/live || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8080/api/v1/health/live || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -144,6 +144,8 @@ services:
     image: ghcr.io/nexora-vn/buyback-nexoravn-frontend:latest
     container_name: buyback-frontend
     restart: unless-stopped
+    env_file:
+      - ./frontend/.env.prod
     ports:
       - "127.0.0.1:3002:3000"
     networks:
@@ -154,7 +156,7 @@ services:
           cpus: '1.5'
           memory: 1536M
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -187,7 +189,29 @@ EOF
 chmod 600 /home/theanh/buyback/backend/.env.prod
 ```
 
-#### 8. Khởi động DB Postgres:
+#### 8. Tạo file môi trường Frontend tại `/home/theanh/buyback/frontend/.env.prod`:
+
+```bash
+mkdir -p /home/theanh/buyback/frontend
+cat << 'EOF' > /home/theanh/buyback/frontend/.env.prod
+NODE_ENV=production
+PORT=3000
+NEXT_PUBLIC_SITE_URL=http://14.225.224.82:3002
+NEXT_PUBLIC_API_URL=http://14.225.224.82:3001
+BACKEND_API_URL=http://buyback-backend:8080
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/
+NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_bW9yYWwtc3dpbmUtNDE4MC5jbGVyay5hY2NvdW50cy5kZXYk
+CLERK_SECRET_KEY=sk_test_lzmtprJMpfVF4eBDA2hUlICiNgAnEylsOsXvNLZbtJ
+CLERK_SYNC_SECRET=c08b53af2693d56995184eaaaf913a548e568d3997dbe142eaaf66b12265f0f5
+EOF
+
+chmod 600 /home/theanh/buyback/frontend/.env.prod
+```
+
+#### 9. Khởi động DB Postgres:
 
 ```bash
 docker compose -p buyback up -d postgres
