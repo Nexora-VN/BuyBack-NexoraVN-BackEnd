@@ -122,5 +122,5 @@ jobs:
           ssh -p 22 -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$ssh_dir/known_hosts" \
             -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-            deploy@4.213.53.132 \
+            theanh@14.225.224.82 \
             "bash -s -- backend '$IMAGE' '$REVISION' '$RUN_NUMBER'" < scripts/deploy-production.sh

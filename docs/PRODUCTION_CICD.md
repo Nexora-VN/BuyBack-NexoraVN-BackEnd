@@ -6,12 +6,12 @@ Hai repo phát hành độc lập khi có push vào main (merge PR tạo push). 
 
 1. Verify: frozen install, lint/typecheck/test/build. BE kiểm tra migrations và e2e trên PostgreSQL 18 tạm của CI, không dùng Azure.
 2. Build Docker image trên GitHub; push GHCR với tag commit SHA; deploy bằng digest bất biến.
-3. SSH deploy@4.213.53.132:22; flock chung /home/deploy/buyback/.deploy.lock cho cả hai repo.
+3. SSH theanh@14.225.224.82:22; flock chung /home/theanh/buyback/.deploy.lock cho cả hai repo.
 4. BE: pull image → one-off container chạy pnpm prisma migrate deploy với backend/.env.prod → chỉ khi thành công mới thay backend.
 5. FE: pull image → chỉ thay frontend. Không migrate hoặc restart backend.
 6. Compose chờ healthy tối đa 180 giây. Lỗi bất kỳ dừng workflow; không tự rollback app/DB.
 
-Giữ nguyên /home/deploy/buyback/docker-compose.yml, project buyback, network buyback-network, port 8082/3002, env_file và container tunnel. Script chỉ thêm override image tạm và lưu release metadata dưới .deploy-state.
+Giữ nguyên /home/theanh/buyback/docker-compose.yml, project buyback, network buyback-network, port 3001/3002, env_file và container tunnel. Script chỉ thêm override image tạm và lưu release metadata dưới .deploy-state.
 
 Không chạy docker compose down, prune, git pull/reset hoặc thay file env trên VPS. App mới cần tương thích với app/DB cũ trong lúc rollout. Migrations phá hủy/rename/drop cần chia nhiều release; DBA phải có backup/PITR Azure trước release.
 
@@ -21,8 +21,8 @@ Trong cả hai repo (hoặc Organization Actions Secrets, giới hạn đúng ha
 
 | Secret               | Nội dung                                               |
 | -------------------- | ------------------------------------------------------ |
-| PROD_SSH_PRIVATE_KEY | Private key SSH riêng cho CI, đăng nhập user deploy    |
-| PROD_SSH_KNOWN_HOSTS | Dòng known_hosts đã xác minh cho 4.213.53.132, port 22 |
+| PROD_SSH_PRIVATE_KEY | Private key SSH riêng cho CI, đăng nhập user theanh   |
+| PROD_SSH_KNOWN_HOSTS | Dòng known_hosts đã xác minh cho 14.225.224.82, port 22 |
 
 Không gửi secret vào chat, source hoặc issue. Không cần DATABASE_URL/ADDLIVETAG_API_KEY ở GitHub: migration/app dùng backend/.env.prod trên VPS. Không có bước duyệt thủ công theo lựa chọn hiện tại.
 
@@ -36,29 +36,29 @@ Tài liệu: [GitHub — publishing Docker images](https://docs.github.com/en/ac
 
 ## Chuẩn bị VPS một lần (operator tự thực hiện)
 
-- User deploy phải dùng Docker không cần sudo; đây là quyền tương đương root, chỉ dùng deploy key chuyên dụng.
+- User theanh phải dùng Docker không cần sudo; đây là quyền tương đương root, chỉ dùng deploy key chuyên dụng.
 - Docker Engine + Compose v2 có up --wait, --wait-timeout, --pull và run --no-deps; kiểm tra docker compose version và docker compose up --help.
 - Có bash, flock (gói util-linux), network buyback-network và stack hiện tại đang chạy.
 - Cho phép SSH port 22 từ GitHub-hosted runners bằng cách phù hợp chính sách firewall của bạn. IP runner không cố định; nếu không mở được, cần runner trong mạng/VPN thay vì tắt kiểm tra SSH.
-- Giữ file /home/deploy/buyback/backend/.env.prod, không copy vào image.
+- Giữ file /home/theanh/buyback/backend/.env.prod, không copy vào image.
 
 Tạo key trên máy quản trị (không phải trên GitHub runner):
 
 ```bash
 ssh-keygen -t ed25519 -f ./buyback-ci -C buyback-github-actions
-ssh-copy-id -i ./buyback-ci.pub deploy@4.213.53.132
+ssh-copy-id -i ./buyback-ci.pub theanh@14.225.224.82
 ```
 
-Dùng key chuyên dụng không passphrase cho automation; private key đưa vào Secret rồi cất an toàn. Public key nằm trong authorized_keys của user deploy.
+Dùng key chuyên dụng không passphrase cho automation; private key đưa vào Secret rồi cất an toàn. Public key nằm trong authorized_keys của user theanh.
 
 Lấy host key và **xác minh trước khi tin cậy**:
 
 - Trên console VPS tin cậy: sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
-- Trên máy quản trị: ssh-keyscan -t ed25519 4.213.53.132 > buyback-known-hosts
+- Trên máy quản trị: ssh-keyscan -t ed25519 14.225.224.82 > buyback-known-hosts
 - Kiểm tra fingerprint: ssh-keygen -lf buyback-known-hosts
 - Hai fingerprint phải khớp, sau đó đưa nội dung file vào PROD_SSH_KNOWN_HOSTS. Không tự tin cậy keyscan trong CI.
 
-Đăng nhập GHCR một lần **dưới user deploy trên VPS**:
+Đăng nhập GHCR một lần **dưới user theanh trên VPS**:
 
 ```bash
 docker login ghcr.io -u TEN_TAI_KHOAN_GITHUB
@@ -92,7 +92,7 @@ State operator có thể đọc (không chứa secret):
 Sau lần CI deploy đầu tiên, không chạy compose up với chỉ file gốc vì image latest local có thể cũ. Khi restart service dùng thêm override đã lưu:
 
 ```bash
-cd /home/deploy/buyback
+cd /home/theanh/buyback
 docker compose -p buyback -f docker-compose.yml -f .deploy-state/backend.compose.json up -d --no-deps --no-build backend
 docker compose -p buyback -f docker-compose.yml -f .deploy-state/frontend.compose.json up -d --no-deps --no-build frontend
 ```

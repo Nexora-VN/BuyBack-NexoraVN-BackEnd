@@ -46,7 +46,7 @@ function run(service, options = {}) {
       mkdirSync(join(dir,'.deploy-state'));
       writeFileSync(join(dir,'.deploy-state', service+'.last-attempt'), options.lastRun+'\n');
     }
-    const code = script.replace('deploy_dir=/home/deploy/buyback', 'deploy_dir="'+dir+'"');
+    const code = script.replace('deploy_dir=/home/theanh/buyback', 'deploy_dir="'+dir+'"');
     const image = 'ghcr.io/nexora-vn/buyback-nexoravn-'+service+'@sha256:'+hash;
     const result = spawnSync('bash', ['-c',code,'test',service,image,sha,'2'], {
       encoding:'utf8', env:{...process.env, PATH:join(dir,'bin')+':'+process.env.PATH,
