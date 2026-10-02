@@ -17,6 +17,8 @@ import type { AuthenticatedUser } from '../../auth/interfaces/authenticated-user
 import { GenerateAffiliateService } from '../services/generate-affiiliate.service.js';
 import type { GenerateAffiliateResponse } from '../services/generate-affiiliate.service.js';
 import { validate } from '../../finance/finance.contract.js';
+import { Throttle } from '@nestjs/throttler';
+import { RATE_LIMITS } from '../../../common/throttling/rate-limits.js';
 import { z } from 'zod';
 
 @ApiTags('generate-affiliate')
@@ -29,6 +31,7 @@ export class GenerateAffiliateController {
   constructor(private readonly generateAffiliateService: GenerateAffiliateService) {}
 
   @Post()
+  @Throttle({ default: RATE_LIMITS.generateLink })
   @Roles(UserRole.USER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   @ApiOperation({ summary: 'Create an affiliate link' })
   @ApiBody({

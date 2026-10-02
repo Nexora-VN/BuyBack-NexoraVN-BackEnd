@@ -20,7 +20,9 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { FastifyRequest } from 'fastify';
+import { RATE_LIMITS } from '../../../common/throttling/rate-limits.js';
 import { CurrentUser } from '../decorators/current-user.decorator.js';
 import { AuthTokensResponseDto, AuthUserDto } from '../dto/auth-response.dto.js';
 import { ClerkLoginDto } from '../dto/clerk-login.dto.js';
@@ -40,6 +42,7 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  @Throttle({ default: RATE_LIMITS.login })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with email and password' })
   @ApiOkResponse({ type: AuthTokensResponseDto })
@@ -52,6 +55,7 @@ export class AuthController {
   }
 
   @Post('clerk')
+  @Throttle({ default: RATE_LIMITS.authSession })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login or sync user authenticated via Clerk' })
   @ApiOkResponse({ type: AuthTokensResponseDto })
@@ -77,6 +81,7 @@ export class AuthController {
   }
 
   @Post('google')
+  @Throttle({ default: RATE_LIMITS.authSession })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login or sync user authenticated via Google' })
   @ApiOkResponse({ type: AuthTokensResponseDto })
@@ -92,6 +97,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Throttle({ default: RATE_LIMITS.authSession })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotate refresh token and issue a new token pair' })
   @ApiOkResponse({ type: AuthTokensResponseDto })

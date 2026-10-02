@@ -1,8 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
+import { SkipThrottle } from '@nestjs/throttler';
 import { DatabaseHealthIndicator } from './health.indicator.js';
 
+@SkipThrottle()
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
