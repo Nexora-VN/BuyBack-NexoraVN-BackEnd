@@ -33,6 +33,8 @@ import { ListProductsQueryDto } from '../dto/list-products-query.dto.js';
 import { ProductListResponseDto, ProductResponseDto } from '../dto/product-response.dto.js';
 import { UpdateProductDto } from '../dto/update-product.dto.js';
 import { ProductService } from '../services/product.service.js';
+import { Throttle } from '@nestjs/throttler';
+import { RATE_LIMITS } from '../../../common/throttling/rate-limits.js';
 
 @ApiTags('products')
 @ApiBearerAuth('access-token')
@@ -53,6 +55,7 @@ export class ProductController {
   }
 
   @Get()
+  @Throttle({ default: RATE_LIMITS.productLookup })
   @ApiOperation({ summary: 'List products' })
   @ApiOkResponse({ type: ProductListResponseDto })
   findMany(@Query() query: ListProductsQueryDto): Promise<ProductListResponseDto> {
@@ -60,6 +63,7 @@ export class ProductController {
   }
 
   @Get(':id')
+  @Throttle({ default: RATE_LIMITS.productLookup })
   @ApiOperation({ summary: 'Get a product by ID' })
   @ApiOkResponse({ type: ProductResponseDto })
   @ApiNotFoundResponse({ description: 'Product not found' })

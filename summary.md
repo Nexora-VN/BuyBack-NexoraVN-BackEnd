@@ -378,6 +378,7 @@ ADDLIVETAG_PAID_COMMISSION_STATUSES="Chờ trả hoa hồng|Chưa chốt|Đã th
 
 | Mã lỗi                           | Nguyên nhân                                                                                     | Cách khắc phục                                                                                              |
 | :------------------------------- | :---------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------- |
+| `RATE_LIMITED`                   | Vượt giới hạn tần suất của endpoint (HTTP 429)                                                  | Chờ theo header `Retry-After` rồi thử lại; xem mục 11                                                       |
 | `INVALID_ATTRIBUTION`            | Chuỗi UTM không đúng 5 thành phần hoặc không tìm thấy `subId2` trong bảng `aff.affiliate_links` | Kiểm tra đơn hàng xem user có mua qua link BuyBack không; nếu mua ngoài thì không thể tự động chia hoa hồng |
 | `COMMISSIONS_NOT_ELIGIBLE`       | Admin chọn commission chưa `VALIDATED` vào kỳ thanh toán                                        | Đảm bảo đơn hàng đã hoàn thành và `ADDLIVETAG_PAID_COMMISSION_STATUSES` đã được cấu hình trên server        |
 | `SETTLEMENT_DISABLED`            | Gọi confirm quyết toán nhưng biến môi trường chưa bật                                           | Đặt `SETTLEMENT_ENABLED=true` trên Railway/server                                                           |
@@ -386,3 +387,22 @@ ADDLIVETAG_PAID_COMMISSION_STATUSES="Chờ trả hoa hồng|Chưa chốt|Đã th
 | `INSUFFICIENT_AVAILABLE_BALANCE` | Số dư khả dụng của ví nhỏ hơn số tiền muốn rút                                                  | Kiểm tra lại ô "Bạn có thể rút" của user                                                                    |
 | `APPROVED_BANK_REQUIRED`         | Tài khoản ngân hàng được chọn chưa được Admin duyệt                                             | Admin vào `/admin/bank-accounts` bấm duyệt tài khoản ngân hàng trước                                        |
 | `WALLET_HAS_CLAWBACK_DEBT`       | Ví user đang có số dư âm (do bị sàn phạt huỷ đơn trước đó)                                      | User cần tích lũy thêm đơn mới để bù khoản nợ trước khi tiếp tục rút                                        |
+
+---
+
+## 11. RATE LIMITING (GIỚI HẠN TẦN SUẤT)
+
+Giới hạn áp dụng trực tiếp trong app bằng `@nestjs/throttler` (lưu in-memory, chỉ phù hợp chạy **1 instance**; nếu scale ngang cần đổi storage sang Redis). Cửa sổ 60 giây, vượt ngưỡng trả `429` với `code: RATE_LIMITED` và header `Retry-After`. Admin và user dùng chung giới hạn. Cấu hình tập trung tại `src/common/throttling/rate-limits.ts`.
+
+| Endpoint                                                      | Giới hạn / phút | Khóa tính                     |
+| :------------------------------------------------------------ | :-------------- | :---------------------------- |
+| `POST /generate-affiliate`                                    | 100             | user                          |
+| `GET /products`, `GET /products/:id`                          | 100             | user                          |
+| `POST /admin/reconciliation/sync`, `.../batches/:id/retry`    | 60              | user                          |
+| `POST /auth/login`                                            | 10              | email (web BFF dùng chung IP) |
+| `POST /auth/refresh`, `/auth/google`, `/auth/clerk`           | 30              | IP                            |
+| `POST/PATCH/DELETE /me/bank-accounts`, `POST /me/withdrawals` | 20              | user                          |
+| Các endpoint còn lại                                          | 120             | user (IP nếu chưa đăng nhập)  |
+| `/health/*`                                                   | không giới hạn  | n/a                           |
+
+Lưu ý: bộ đếm tính riêng theo từng route và reset khi restart container. Khóa "user" được lấy từ access token đã verify; token sai/hết hạn bị tính theo IP.

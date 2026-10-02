@@ -13,6 +13,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { Throttle } from '@nestjs/throttler';
+import { RATE_LIMITS } from '../../common/throttling/rate-limits.js';
 import { UserRole } from '../../common/domain/enums.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -158,6 +160,7 @@ export class FinanceAdminController {
     return this.credentials.verify(validate(verificationInput, body), actor.id);
   }
   @Post('reconciliation/sync')
+  @Throttle({ default: RATE_LIMITS.sync })
   @ApiBody(schema(syncRangeInput))
   enqueue(@Body() body: unknown, @CurrentUser() actor: AuthenticatedUser) {
     const input = validate(syncRangeInput, body);
@@ -174,6 +177,7 @@ export class FinanceAdminController {
     return this.queries.list('issues', validate(listInput, query), undefined, id);
   }
   @Post('reconciliation/batches/:id/retry')
+  @Throttle({ default: RATE_LIMITS.sync })
   retry(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.sync.retry(id, actor.id);
   }

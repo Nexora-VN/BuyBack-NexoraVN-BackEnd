@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { Throttle } from '@nestjs/throttler';
+import { RATE_LIMITS } from '../../common/throttling/rate-limits.js';
 type SchemaObject = Extract<Parameters<typeof ApiBody>[0], { schema: unknown }>['schema'];
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
@@ -74,11 +76,13 @@ export class FinanceUserController {
     return this.queries.dashboard(actor.id);
   }
   @Post('bank-accounts')
+  @Throttle({ default: RATE_LIMITS.financeWrite })
   @ApiBody({ schema: z.toJSONSchema(bankInput) as SchemaObject })
   bank(@Body() body: unknown, @CurrentUser() actor: AuthenticatedUser) {
     return this.banks.save(actor.id, validate(bankInput, body));
   }
   @Patch('bank-accounts/:id')
+  @Throttle({ default: RATE_LIMITS.financeWrite })
   @ApiBody({ schema: z.toJSONSchema(bankInput) as SchemaObject })
   updateBank(
     @Param('id', ParseUUIDPipe) id: string,
@@ -88,10 +92,12 @@ export class FinanceUserController {
     return this.banks.save(actor.id, validate(bankInput, body), id);
   }
   @Delete('bank-accounts/:id')
+  @Throttle({ default: RATE_LIMITS.financeWrite })
   removeBank(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.banks.remove(actor.id, id);
   }
   @Post('withdrawals')
+  @Throttle({ default: RATE_LIMITS.financeWrite })
   @ApiBody({ schema: z.toJSONSchema(withdrawalInput) as SchemaObject })
   withdraw(@Body() body: unknown, @CurrentUser() actor: AuthenticatedUser) {
     return this.withdrawals.create(actor.id, validate(withdrawalInput, body));

@@ -4,6 +4,7 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { httpLogging } from './common/observability/http-logging.js';
 import { validateEnvironment } from './common/config/environment.js';
+import { ThrottlingModule } from './common/throttling/throttling.module.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { BigIntSerializationInterceptor } from './common/interceptors/bigint-serialization.interceptor.js';
 import { PrismaModule } from './infrastructure/database/prisma/prisma.module.js';
@@ -27,6 +28,7 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
       useFactory: (configService: ConfigService) =>
         httpLogging(configService.get<string>('LOG_LEVEL', 'info')),
     }),
+    ThrottlingModule,
     PrismaModule,
     AuthModule,
     UsersModule,
