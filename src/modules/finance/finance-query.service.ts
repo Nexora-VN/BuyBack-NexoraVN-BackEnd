@@ -35,6 +35,50 @@ const withdrawalSelect = {
   transferReference: true,
   bank: { select: bankSelect },
 } as const;
+const sourceOrderSelect = {
+  id: true,
+  orderSn: true,
+  provider: true,
+  payload: true,
+  items: { take: 1, select: { payload: true } },
+} as const;
+const sourceCheckoutSelect = {
+  provider: true,
+  orders: { orderBy: { createdAt: 'asc' }, select: sourceOrderSelect },
+} as const;
+type SourceOrder = {
+  id: string;
+  orderSn: string;
+  provider: string;
+  payload: unknown;
+  items: { payload: unknown }[];
+};
+type SourceCheckout = { provider: string; orders: SourceOrder[] };
+function orderSources(checkout: SourceCheckout | null) {
+  return (checkout?.orders ?? []).map((order) => {
+    const snapshot = Array.isArray(order.payload)
+      ? (order.payload[0] as Record<string, unknown>)
+      : null;
+    const itemPayload = order.items[0]?.payload;
+    const item =
+      itemPayload && typeof itemPayload === 'object'
+        ? (itemPayload as Record<string, unknown>)
+        : null;
+    const name = snapshot?.item_name ?? snapshot?.itemName ?? item?.item_name ?? item?.itemName;
+    const affiliate = snapshot?.affiliate ?? item?.affiliate;
+    const itemUrl = snapshot?.item_url ?? item?.item_url;
+    return {
+      id: order.id,
+      orderSn: order.orderSn,
+      platform: detectPlatform(
+        order.provider || checkout?.provider,
+        typeof affiliate === 'string' ? affiliate : undefined,
+        typeof itemUrl === 'string' ? itemUrl : undefined,
+      ),
+      productName: typeof name === 'string' && name.trim() ? name.trim() : null,
+    };
+  });
+}
 function enumStatus<T extends string>(
   value: string | undefined,
   allowed: readonly T[],
@@ -297,7 +341,13 @@ export class FinanceQueryService {
         const where = {
           commission: {
             ...(userId ? { userId } : {}),
-            ...(search ? { checkout: { checkoutId: search } } : {}),
+            ...(search
+              ? {
+                  checkout: {
+                    OR: [{ checkoutId: search }, { orders: { some: { orderSn: search } } }],
+                  },
+                }
+              : {}),
           },
           ...(state ? { state } : {}),
         };
@@ -313,12 +363,25 @@ export class FinanceQueryService {
                   estimatedVnd: true,
                   settledVnd: true,
                   state: true,
+                  checkout: { select: sourceCheckoutSelect },
                 },
               },
             },
           }),
           db.cashbackAllocation.count({ where }),
         ]);
+        data = data.map((value) => {
+          const row = value as {
+            commission: { checkout: SourceCheckout } & Record<string, unknown>;
+          } & Record<string, unknown>;
+          const { checkout, ...commission } = row.commission;
+          const orders = orderSources(checkout);
+          return {
+            ...row,
+            commission,
+            source: { order: orders[0] ?? null, orders, withdrawal: null },
+          };
+        });
         break;
       }
       case 'withdrawals': {
@@ -367,15 +430,77 @@ export class FinanceQueryService {
         break;
       }
       case 'transactions': {
+        const relatedReferences =
+          search && userId
+            ? await Promise.all([
+                db.commission.findMany({
+                  where: { userId, checkout: { orders: { some: { orderSn: search } } } },
+                  select: { id: true },
+                }),
+                db.withdrawal.findMany({
+                  where: { userId, transferReference: search },
+                  select: { id: true },
+                }),
+              ]).then(([commissions, withdrawals]) => [
+                ...commissions.map((row) => row.id),
+                ...withdrawals.map((row) => row.id),
+              ])
+            : [];
         const where = {
           ...(userId ? { wallet: { userId } } : {}),
-          ...(search ? { reference: search } : {}),
+          ...(search
+            ? { OR: [{ reference: search }, { reference: { in: relatedReferences } }] }
+            : {}),
           ...(query.status ? { type: query.status } : {}),
         };
         [data, total] = await Promise.all([
           db.walletTransaction.findMany({ ...page, where }),
           db.walletTransaction.count({ where }),
         ]);
+        const rows = data as { type: string; reference: string }[];
+        const validId = (value: string) =>
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+        const commissionIds = rows
+          .filter((row) => row.type.startsWith('CASHBACK_') && validId(row.reference))
+          .map((row) => row.reference);
+        const withdrawalIds = rows
+          .filter((row) => row.type.startsWith('WITHDRAWAL_') && validId(row.reference))
+          .map((row) => row.reference);
+        const [commissions, withdrawals] = await Promise.all([
+          db.commission.findMany({
+            where: { id: { in: commissionIds }, ...(userId ? { userId } : {}) },
+            select: { id: true, checkout: { select: sourceCheckoutSelect } },
+          }),
+          db.withdrawal.findMany({
+            where: { id: { in: withdrawalIds }, ...(userId ? { userId } : {}) },
+            select: { id: true, bank: { select: { bankName: true, lastFour: true } } },
+          }),
+        ]);
+        const ordersByCommission = new Map(
+          commissions.map((row) => [row.id, orderSources(row.checkout)]),
+        );
+        const withdrawalsById = new Map(
+          withdrawals.map((row) => [
+            row.id,
+            {
+              id: row.id,
+              bankName: row.bank.bankName,
+              lastFour: row.bank.lastFour,
+            },
+          ]),
+        );
+        data = data.map((value) => {
+          const row = value as { type: string; reference: string } & Record<string, unknown>;
+          const orders = ordersByCommission.get(row.reference) ?? [];
+          return {
+            ...row,
+            source: {
+              order: orders[0] ?? null,
+              orders,
+              withdrawal: withdrawalsById.get(row.reference) ?? null,
+            },
+          };
+        });
         break;
       }
       case 'batches': {

@@ -52,7 +52,7 @@ describe('Affiliate finance end-to-end', () => {
     const cancelled = status === 3;
     return {
       checkout_id: prefix,
-      order_sn: prefix,
+      order_sn: prefix + '-order',
       affiliate: 'affiliate-test',
       utm: [
         userId.replaceAll('-', ''),
@@ -352,6 +352,77 @@ describe('Affiliate finance end-to-end', () => {
       }),
     ).toBe(1);
     expect((await api(userToken).get('me/wallet')).body).toMatchObject({ available: '84150' });
+    const checkout = await db.providerCheckout.findFirstOrThrow({ where: { checkoutId: prefix } });
+    await db.providerOrder.create({
+      data: {
+        provider: checkout.provider,
+        orderId: prefix + '-second',
+        orderSn: prefix + '-second',
+        checkoutId: checkout.id,
+        status: 'completed',
+        payload: [
+          {
+            item_name: 'Second product',
+            affiliate: 'TikTok Shop',
+            item_url: 'https://www.tiktok.com/shop',
+          },
+        ],
+      },
+    });
+    const cashbacks = await api(userToken).get('me/cashbacks').expect(200);
+    expect(
+      cashbacks.body.data.find(
+        (row: { commissionId: string }) => row.commissionId === commissionId,
+      ),
+    ).toMatchObject({
+      source: {
+        order: { orderSn: prefix + '-order', platform: 'Shopee', productName: 'Test product' },
+        orders: [
+          { orderSn: prefix + '-order', platform: 'Shopee' },
+          { orderSn: prefix + '-second', platform: 'TikTok Shop' },
+        ],
+      },
+    });
+    const transactions = await api(userToken).get('me/wallet/transactions').expect(200);
+    expect(
+      transactions.body.data.find((row: { type: string }) => row.type === 'CASHBACK_CREDIT'),
+    ).toMatchObject({
+      source: {
+        order: { orderSn: prefix + '-order', platform: 'Shopee', productName: 'Test product' },
+        orders: [
+          { orderSn: prefix + '-order', platform: 'Shopee' },
+          { orderSn: prefix + '-second', platform: 'TikTok Shop' },
+        ],
+      },
+    });
+    expect(
+      (
+        await api(userToken)
+          .get('me/cashbacks?search=' + prefix + '-order')
+          .expect(200)
+      ).body.meta.total,
+    ).toBe(1);
+    expect(
+      (
+        await api(userToken)
+          .get('me/cashbacks?search=' + prefix + '-second')
+          .expect(200)
+      ).body.meta.total,
+    ).toBe(1);
+    expect(
+      (
+        await api(userToken)
+          .get('me/wallet/transactions?search=' + prefix + '-order')
+          .expect(200)
+      ).body.meta.total,
+    ).toBe(1);
+    expect(
+      (
+        await api(userToken)
+          .get('me/wallet/transactions?search=' + prefix + '-second')
+          .expect(200)
+      ).body.meta.total,
+    ).toBe(1);
   });
   it('versions approved banks and requires review before withdrawal', async () => {
     const body = {
@@ -394,13 +465,24 @@ describe('Affiliate finance end-to-end', () => {
     const wallet = await db.wallet.findUniqueOrThrow({ where: { userId } });
     expect(wallet.available).toBe(34150n);
     expect(wallet.reserved).toBe(50000n);
+    const transactions = await api(userToken).get('me/wallet/transactions').expect(200);
+    expect(
+      transactions.body.data.find((row: { type: string }) => row.type === 'WITHDRAWAL_RESERVE'),
+    ).toMatchObject({
+      source: { withdrawal: { id: withdrawalId, bankName: 'Vietcombank', lastFour: '8901' } },
+    });
     const other = await db.user.findUniqueOrThrow({ where: { id: otherId } });
     const login = await request(app.getHttpServer() as Parameters<typeof request>[0])
       .post('/api/v1/auth/login')
       .send({ email: other.email, password: 'finance-test-password' })
       .expect(200);
-    const result = await api((login.body as { accessToken: string }).accessToken).get('me/orders');
+    const otherToken = (login.body as { accessToken: string }).accessToken;
+    const result = await api(otherToken).get('me/orders');
     expect(result.body).toMatchObject({ meta: { total: 0 } });
+    expect((await api(otherToken).get('me/cashbacks').expect(200)).body.meta.total).toBe(0);
+    expect((await api(otherToken).get('me/wallet/transactions').expect(200)).body.meta.total).toBe(
+      0,
+    );
   });
   it('releases a rejected reservation exactly once', async () => {
     const rejection = { status: 'REJECTED', reason: 'Test reservation release' };
@@ -446,6 +528,12 @@ describe('Affiliate finance end-to-end', () => {
         where: { reference: commissionId, type: 'CASHBACK_REVERSAL' },
       }),
     ).toBe(1);
+    const history = await api(userToken).get('me/wallet/transactions').expect(200);
+    expect(
+      history.body.data.find((row: { type: string }) => row.type === 'CASHBACK_REVERSAL'),
+    ).toMatchObject({
+      source: { order: { orderSn: prefix + '-order', productName: 'Test product' } },
+    });
     await api(userToken)
       .post('me/withdrawals', { bankId, amount: '50000', idempotencyKey: randomUUID() })
       .expect(409);
