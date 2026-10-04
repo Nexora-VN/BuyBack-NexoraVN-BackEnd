@@ -3,6 +3,7 @@ import { GenerateAffiliateService } from './generate-affiiliate.service.js';
 import type { AffiliateRepository } from '../repositories/affiliate.repository.js';
 import type { UsersService } from '../../users/services/users.service.js';
 import type { ProductService } from '../../product/services/product.service.js';
+import type { PrismaService } from '../../../infrastructure/database/prisma/prisma.service.js';
 import { generateLinkByAddLiveTag } from '../utils/generate-link-by-alt.js';
 import { getProductByUrl } from '../../product/utils/get-product-by-aff-id.js';
 import { productProviderReferenceSchema } from '../../product/contracts/product-provider.contract.js';
@@ -19,16 +20,19 @@ describe('GenerateAffiliateService', () => {
   const repository = { create: jest.fn() };
   const users = { getUserStatusById: jest.fn() };
   const products = { upsertFromProvider: jest.fn() };
+  const db = { affiliatePolicy: { findUnique: jest.fn() } };
   const service = new GenerateAffiliateService(
     repository as unknown as AffiliateRepository,
     users as unknown as UsersService,
     products as unknown as ProductService,
     { getOrThrow: () => 'affiliate-id' } as unknown as ConfigService,
+    db as unknown as PrismaService,
   );
   beforeEach(() => {
     jest.resetAllMocks();
     users.getUserStatusById.mockResolvedValue({ status: UserStatus.ACTIVE });
     products.upsertFromProvider.mockResolvedValue(product);
+    db.affiliatePolicy.findUnique.mockResolvedValue(null);
     jest
       .mocked(getProductByUrl)
       .mockResolvedValue(productProviderReferenceSchema.parse(providerPayload));
@@ -38,6 +42,7 @@ describe('GenerateAffiliateService', () => {
   it('uses provider origin and preserves product and all fallback tracking fields', async () => {
     const result = await service.generateAffiliateLinkBySystem(input, 'user-id');
     expect(result.product).toEqual(product);
+    expect(result.estimatedUserCashbackVnd).toBe('11986');
     expect(() => JSON.stringify(result)).not.toThrow();
     expect(getProductByUrl).toHaveBeenCalledWith(input);
     expect(products.upsertFromProvider).toHaveBeenCalledWith(
@@ -71,6 +76,17 @@ describe('GenerateAffiliateService', () => {
       sub4: saved.subId4,
       sub5: saved.subId5,
     });
+  });
+
+  it('uses the current user share and omits an unavailable estimate', async () => {
+    db.affiliatePolicy.findUnique.mockResolvedValue({ userBps: 7000 });
+    expect(
+      (await service.generateAffiliateLinkBySystem(input, 'user-id')).estimatedUserCashbackVnd,
+    ).toBe('9871');
+    products.upsertFromProvider.mockResolvedValue({ ...product, commission: 'invalid' });
+    expect(
+      (await service.generateAffiliateLinkBySystem(input, 'user-id')).estimatedUserCashbackVnd,
+    ).toBeNull();
   });
 
   it('prefers the provider short link and saves its links', async () => {

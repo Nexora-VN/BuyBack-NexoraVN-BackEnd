@@ -28,6 +28,7 @@ const enabled = new URL(connectionString).pathname === '/nexora_generate_test';
     { getUserStatusById: () => Promise.resolve({ status: 'ACTIVE' }) } as unknown as UsersService,
     new ProductService(new PrismaProductRepository(db)),
     new ConfigService({ SHOPEE_AFFILIATE_ID: 'test-affiliate' }),
+    db,
   );
   const userId = randomUUID();
   const itemId = BigInt(providerPayload.productInfo.itemId);

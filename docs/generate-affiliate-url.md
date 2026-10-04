@@ -5,6 +5,16 @@ checks that the returned origin matches the returned shop/item IDs, and upserts
 product data before creating tracking. The product UUID is preserved on update.
 Short links remain preferred, with the existing `an_redir` fallback.
 
+## End-user cashback estimate
+
+`POST /api/v1/generate-affiliate` also returns `estimatedUserCashbackVnd` as an
+integer VND string or `null`. It applies the current `AffiliatePolicy.userBps`
+(85% when no policy row exists) to the provider's projected commission, rounded
+down to whole VND. The existing `product.commission` remains the provider's
+commission and must not be presented as the customer's cashback. If commission
+data is absent or invalid, the estimate is `null`. The eventual amount can
+change after provider confirmation, deductions, and settlement.
+
 ## Local setup before browser testing
 
 Use Node 24 and run in the backend directory. Set `DATABASE_URL` explicitly to

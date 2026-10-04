@@ -15,11 +15,15 @@ import { generateLinkByAddLiveTag } from '../utils/generate-link-by-alt.js';
 import { AppError, databaseError } from '../../../common/observability/app-error.js';
 import { event, step } from '../../../common/observability/observability.js';
 import type { ProductResponseDto } from '../../product/dto/product-response.dto.js';
+import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service.js';
+import { splitCashback } from '../../finance/domain/money.js';
 
 export interface GenerateAffiliateResponse {
   link: string | null;
   code: ErrorCode | null;
   product: ProductResponseDto | null;
+  /** Estimated end-user share, in integer VND. Null when provider data is unavailable. */
+  estimatedUserCashbackVnd: string | null;
   addLiveTagLink?: GenerateLinkAddLiveTag | null;
 }
 
@@ -30,6 +34,7 @@ export class GenerateAffiliateService {
     private readonly usersService: UsersService,
     private readonly productService: ProductService,
     private readonly configService: ConfigService,
+    private readonly db: PrismaService,
   ) {}
 
   async generateAffiliateLinkBySystem(
@@ -96,6 +101,12 @@ export class GenerateAffiliateService {
         ),
       );
       savedProductId = product.id;
+      const policy = await this.db.affiliatePolicy.findUnique({ where: { id: 1 } });
+      const commission = product.commission;
+      const estimatedUserCashbackVnd =
+        typeof commission === 'string' && /^\d+$/.test(commission)
+          ? splitCashback(BigInt(commission), BigInt(policy?.userBps ?? 8500)).user.toString()
+          : null;
 
       const affiliateLinkId = randomUUID();
       // Keep sub-ID order stable for reconciliation: user, link, channel, tracking, product.
@@ -173,6 +184,7 @@ export class GenerateAffiliateService {
         code: null,
         // Provider commission is an estimate, not the user cashback allocation.
         product,
+        estimatedUserCashbackVnd,
       };
     } catch (cause) {
       const error = cause instanceof AppError ? cause : databaseError(cause, stage);
