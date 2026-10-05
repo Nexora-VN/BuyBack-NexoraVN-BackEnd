@@ -9,6 +9,7 @@ export const environmentSchema = z
       (value) => (value === '' ? undefined : value),
       z.string().min(32).optional(),
     ),
+    GOOGLE_OAUTH_CLIENT_IDS: z.string().optional(),
     SHOPEE_AFFILIATE_ID: z.string().regex(/^\d+$/).optional(),
     ADDLIVETAG_API_KEY: z.preprocess(
       (v) => (v === '' ? undefined : v),

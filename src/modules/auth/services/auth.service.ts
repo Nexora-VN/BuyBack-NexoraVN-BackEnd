@@ -3,6 +3,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import { OAuth2Client } from 'google-auth-library';
 import { UserStatus } from '../../../common/domain/enums.js';
 import type { AuthTokensResponseDto } from '../dto/auth-response.dto.js';
 import type { GoogleLoginDto } from '../dto/google-login.dto.js';
@@ -88,25 +89,23 @@ export class AuthService {
     let email: string | undefined;
     let name: string | undefined;
 
-    if (input.idToken) {
+    const allowedClientIds = (this.configService.get<string>('GOOGLE_OAUTH_CLIENT_IDS') ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    if (input.idToken && allowedClientIds.length) {
       try {
-        const res = await fetch(
-          `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(input.idToken)}`,
-        );
-        if (res.ok) {
-          const payload = (await res.json()) as {
-            email?: string;
-            email_verified?: string | boolean;
-            name?: string;
-          };
-          const isVerified = payload.email_verified === 'true' || payload.email_verified === true;
-          if (payload.email && isVerified) {
-            email = payload.email;
-            name = payload.name;
-          }
+        const ticket = await new OAuth2Client().verifyIdToken({
+          idToken: input.idToken,
+          audience: allowedClientIds,
+        });
+        const payload = ticket.getPayload();
+        if (payload?.email && payload.email_verified) {
+          email = payload.email;
+          name = payload.name;
         }
       } catch {
-        // Fall through
+        // Mobile may also supply an access token; verify it below.
       }
     }
 
