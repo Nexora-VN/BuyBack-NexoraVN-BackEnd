@@ -6,10 +6,11 @@ export const reason = z.string().trim().min(5).max(1000);
 export const key = z.string().trim().min(8).max(150);
 export const bankInput = z.object({
   bankCode: z.string().trim().min(2).max(20),
-  bankName: z.string().trim().min(2).max(100),
-  bankBranch: z.string().trim().max(100).optional(),
-  accountHolder: z.string().trim().min(2).max(120),
-  accountNumber: z.string().regex(/^[0-9]{6,30}$/),
+  accountNumber: z.string().regex(/^[0-9]{6,19}$/),
+});
+export const bankLookupInput = z.object({
+  bankCode: z.string().trim().min(2).max(20),
+  accountNumber: z.string().regex(/^\d{6,19}$/),
 });
 export const settlementInput = z.object({
   reference: z.string().trim().min(5).max(150),

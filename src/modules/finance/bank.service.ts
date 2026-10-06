@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { bankInput } from './finance.contract.js';
 import { FinanceCrypto } from './crypto.service.js';
 import { FinanceRepository, audit } from './finance.repository.js';
+import { BankLookupService } from './bank-lookup.service.js';
 
 export const bankSelect = {
   id: true,
@@ -24,8 +25,10 @@ export class BankService {
   constructor(
     private readonly repo: FinanceRepository,
     private readonly crypto: FinanceCrypto,
+    private readonly lookup: BankLookupService,
   ) {}
   async save(userId: string, input: z.infer<typeof bankInput>, previousId?: string) {
+    const verified = await this.lookup.lookup(input.bankCode, input.accountNumber);
     return this.repo.transaction(async (tx) => {
       const previous = previousId
         ? await tx.userBank.findFirst({ where: { id: previousId, userId, deleteAt: null } })
@@ -37,10 +40,10 @@ export class BankService {
         data: {
           id,
           userId,
-          bankCode: input.bankCode,
-          bankName: input.bankName,
-          bankBranch: input.bankBranch,
-          accountHolder: input.accountHolder,
+          bankCode: verified.bankCode,
+          bankName: verified.bankName,
+          bankBranch: null,
+          accountHolder: verified.accountHolder,
           accountCiphertext: secret.ciphertext,
           accountIv: secret.iv,
           accountTag: secret.tag,
