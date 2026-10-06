@@ -130,6 +130,7 @@ export class WithdrawalService {
       if (!row || row.status !== 'PROCESSING')
         throw new ConflictException('WITHDRAWAL_NOT_PROCESSING');
       const s = row.bankSnapshot as {
+        bankCode: string;
         ciphertext: string;
         iv: string;
         tag: string;
@@ -138,7 +139,12 @@ export class WithdrawalService {
       };
       const accountNumber = this.crypto.decrypt(s, 'bank:' + row.bankId);
       await audit(tx, actor, 'WITHDRAWAL_BANK_REVEALED', id);
-      return { bankName: s.bankName, accountHolder: s.accountHolder, accountNumber };
+      return {
+        bankCode: s.bankCode,
+        bankName: s.bankName,
+        accountHolder: s.accountHolder,
+        accountNumber,
+      };
     });
   }
   adjust(actor: string, input: z.infer<typeof adjustmentInput>) {

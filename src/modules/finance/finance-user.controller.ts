@@ -20,9 +20,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/interfaces/authenticated-user.js';
 import { FinanceQueryService } from './finance-query.service.js';
 import { BankService } from './bank.service.js';
-import { BankLookupService } from './bank-lookup.service.js';
 import { WithdrawalService } from './withdrawal.service.js';
-import { bankInput, bankLookupInput, listInput, validate, withdrawalInput } from './finance.contract.js';
+import { bankInput, listInput, validate, withdrawalInput } from './finance.contract.js';
 @ApiTags('finance-user')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
@@ -31,7 +30,6 @@ export class FinanceUserController {
   constructor(
     private readonly queries: FinanceQueryService,
     private readonly banks: BankService,
-    private readonly bankLookup: BankLookupService,
     private readonly withdrawals: WithdrawalService,
   ) {}
 
@@ -53,19 +51,6 @@ export class FinanceUserController {
   @Get('bank-accounts')
   list3(@Query() query: unknown, @CurrentUser() actor: AuthenticatedUser) {
     return this.queries.list('bank-accounts', validate(listInput, query), actor.id);
-  }
-
-  @Get('banks')
-  supportedBanks() {
-    return this.bankLookup.banks();
-  }
-
-  @Post('bank-accounts/lookup')
-  @Throttle({ default: RATE_LIMITS.financeWrite })
-  @ApiBody({ schema: z.toJSONSchema(bankLookupInput) as SchemaObject })
-  lookupBank(@Body() body: unknown) {
-    const input = validate(bankLookupInput, body);
-    return this.bankLookup.lookup(input.bankCode, input.accountNumber);
   }
 
   @Get('affiliate-links')

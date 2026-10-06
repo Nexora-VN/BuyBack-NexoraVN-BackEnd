@@ -6,7 +6,6 @@ import { FinanceRepository } from './finance.repository.js';
 import { FinanceCrypto } from './crypto.service.js';
 import { WalletService } from './wallet.service.js';
 import { BankService } from './bank.service.js';
-import { BankLookupService } from './bank-lookup.service.js';
 import { SettlementService } from './settlement.service.js';
 import { WithdrawalService } from './withdrawal.service.js';
 import { FinanceQueryService } from './finance-query.service.js';
@@ -20,7 +19,6 @@ import { ReconciliationModule } from '../reconciliation/reconciliation.module.js
     FinanceCrypto,
     WalletService,
     BankService,
-    BankLookupService,
     SettlementService,
     WithdrawalService,
     FinanceQueryService,
