@@ -29,9 +29,16 @@ import { ClerkLoginDto } from '../dto/clerk-login.dto.js';
 import { GoogleLoginDto } from '../dto/google-login.dto.js';
 import { LoginDto } from '../dto/login.dto.js';
 import { RefreshTokenDto } from '../dto/refresh-token.dto.js';
+import { RegisterStartDto } from '../dto/register-start.dto.js';
+import { RegisterVerifyDto } from '../dto/register-verify.dto.js';
+import { RegisterResendDto } from '../dto/register-resend.dto.js';
+import { PasswordResetStartDto } from '../dto/password-reset-start.dto.js';
+import { PasswordResetConfirmDto } from '../dto/password-reset-confirm.dto.js';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard.js';
 import type { AuthenticatedUser } from '../interfaces/authenticated-user.js';
 import { AuthService } from '../services/auth.service.js';
+import { RegistrationService } from '../services/registration.service.js';
+import { PasswordResetService } from '../services/password-reset.service.js';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -39,7 +46,51 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly config: ConfigService,
+    private readonly registration: RegistrationService,
+    private readonly passwordReset: PasswordResetService,
   ) {}
+
+  @Post('register/start')
+  @Throttle({ default: RATE_LIMITS.registrationStart })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send a registration verification code' })
+  startRegistration(@Body() input: RegisterStartDto) {
+    return this.registration.start(input);
+  }
+
+  @Post('register/resend')
+  @Throttle({ default: RATE_LIMITS.registrationResend })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resend the registration verification code' })
+  resendRegistration(@Body() input: RegisterResendDto) {
+    return this.registration.resend(input.email);
+  }
+
+  @Post('register/verify')
+  @Throttle({ default: RATE_LIMITS.registrationVerify })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Verify email and create a USER account' })
+  @ApiNoContentResponse()
+  verifyRegistration(@Body() input: RegisterVerifyDto): Promise<void> {
+    return this.registration.verify(input.email, input.code);
+  }
+
+  @Post('password-reset/start')
+  @Throttle({ default: RATE_LIMITS.passwordResetStart })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Email a password reset code when an active account exists' })
+  startPasswordReset(@Body() input: PasswordResetStartDto) {
+    return this.passwordReset.start(input.email);
+  }
+
+  @Post('password-reset/confirm')
+  @Throttle({ default: RATE_LIMITS.passwordResetConfirm })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Set a new password using the email code and revoke sessions' })
+  @ApiNoContentResponse()
+  confirmPasswordReset(@Body() input: PasswordResetConfirmDto): Promise<void> {
+    return this.passwordReset.confirm(input);
+  }
 
   @Post('login')
   @Throttle({ default: RATE_LIMITS.login })

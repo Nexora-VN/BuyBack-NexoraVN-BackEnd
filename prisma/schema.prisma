@@ -33,7 +33,7 @@ model User {
 
   // User Information
   email        String  @unique @db.VarChar(320)
-  phoneNumber  String  @unique @map("phone_number") @db.VarChar(20)
+  phoneNumber  String? @unique @map("phone_number") @db.VarChar(20)
   passwordHash String  @map("password_hash")
   displayName  String? @map("display_name") @db.VarChar(120)
   fullName     String? @map("full_name") @db.VarChar(50)
@@ -54,17 +54,55 @@ model User {
 
   // Relationship
   // 1 User -> N UserBank
-  banks          UserBank[]
-  sessions       AuthSession[]
+  banks                   UserBank[]
+  sessions                AuthSession[]
+  passwordResetChallenges PasswordResetChallenge[]
   // 1 User -> N AffiliateLink
-  affiliateLinks AffiliateLink[]
-  wallet         Wallet?
-  commissions    Commission[]
-  withdrawals    Withdrawal[]
+  affiliateLinks          AffiliateLink[]
+  wallet                  Wallet?
+  commissions             Commission[]
+  withdrawals             Withdrawal[]
 
   @@index([status])
   @@index([createdAt])
   @@map("users")
+  @@schema("aff")
+}
+
+model RegistrationChallenge {
+  email        String    @id @db.VarChar(320)
+  name         String    @db.VarChar(120)
+  passwordHash String    @map("password_hash")
+  codeHash     String    @map("code_hash") @db.VarChar(64)
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  resendAfter  DateTime  @map("resend_after") @db.Timestamptz(3)
+  attempts     Int       @default(0)
+  sendCount    Int       @default(1) @map("send_count")
+  consumedAt   DateTime? @map("consumed_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@map("registration_challenges")
+  @@schema("aff")
+}
+
+model PasswordResetChallenge {
+  email       String    @id @db.VarChar(320)
+  userId      String    @map("user_id") @db.Uuid
+  codeHash    String    @map("code_hash") @db.VarChar(64)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
+  resendAfter DateTime  @map("resend_after") @db.Timestamptz(3)
+  attempts    Int       @default(0)
+  sendCount   Int       @default(1) @map("send_count")
+  consumedAt  DateTime? @map("consumed_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId])
+  @@map("password_reset_challenges")
   @@schema("aff")
 }
 

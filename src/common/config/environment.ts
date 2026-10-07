@@ -10,6 +10,12 @@ export const environmentSchema = z
       z.string().min(32).optional(),
     ),
     GOOGLE_OAUTH_CLIENT_IDS: z.string().optional(),
+    SMTP_HOST: z.string().trim().min(1).optional(),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).optional(),
+    SMTP_USER: z.string().trim().min(1).optional(),
+    SMTP_PASS: z.string().min(1).optional(),
+    SMTP_FROM: z.email().optional(),
+    REGISTRATION_OTP_SECRET: z.string().min(32).optional(),
     SHOPEE_AFFILIATE_ID: z.string().regex(/^\d+$/).optional(),
     ADDLIVETAG_API_KEY: z.preprocess(
       (v) => (v === '' ? undefined : v),
@@ -50,6 +56,25 @@ export const environmentSchema = z
       .default('info'),
   })
   .superRefine((environment, context) => {
+    const mailKeys = [
+      'SMTP_HOST',
+      'SMTP_PORT',
+      'SMTP_USER',
+      'SMTP_PASS',
+      'SMTP_FROM',
+      'REGISTRATION_OTP_SECRET',
+    ] as const;
+    if (mailKeys.some((key) => environment[key] !== undefined)) {
+      for (const key of mailKeys) {
+        if (environment[key] === undefined) {
+          context.addIssue({
+            code: 'custom',
+            path: [key],
+            message: 'Authentication email requires complete SMTP and OTP configuration',
+          });
+        }
+      }
+    }
     if (environment.RECONCILIATION_ENABLED && !environment.ADDLIVETAG_API_KEY) {
       context.addIssue({
         code: 'custom',

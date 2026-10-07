@@ -4,6 +4,11 @@ const MINUTE = 60_000;
 export const RATE_LIMITS = {
   default: { limit: 120, ttl: MINUTE },
   login: { limit: 10, ttl: MINUTE },
+  registrationStart: { limit: 5, ttl: MINUTE },
+  registrationVerify: { limit: 10, ttl: MINUTE },
+  registrationResend: { limit: 5, ttl: MINUTE },
+  passwordResetStart: { limit: 5, ttl: MINUTE },
+  passwordResetConfirm: { limit: 10, ttl: MINUTE },
   authSession: { limit: 30, ttl: MINUTE },
   generateLink: { limit: 100, ttl: MINUTE },
   productLookup: { limit: 100, ttl: MINUTE },
