@@ -39,7 +39,12 @@ export class AppThrottlerGuard extends ThrottlerGuard {
   protected override async getTracker(req: Record<string, unknown>): Promise<string> {
     const request = req as unknown as ThrottledRequest;
     // The web BFF proxy sends all web users from one IP, so login is keyed by email.
-    if (request.method === 'POST' && request.url.split('?')[0]?.endsWith('/auth/login')) {
+    if (
+      request.method === 'POST' &&
+      ['/auth/login', '/auth/password-reset/start', '/auth/password-reset/confirm'].some((route) =>
+        request.url.split('?')[0]?.endsWith(route),
+      )
+    ) {
       const email = (request.body as { email?: unknown } | undefined)?.email;
       if (typeof email === 'string' && email.length > 0) {
         return `email:${email.trim().toLowerCase().slice(0, 254)}`;
