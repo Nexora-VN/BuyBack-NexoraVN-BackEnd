@@ -7,6 +7,9 @@ import { RolesGuard } from './guards/roles.guard.js';
 import { AuthRepository } from './repositories/auth.repository.js';
 import { PrismaAuthRepository } from './repositories/prisma-auth.repository.js';
 import { AuthService } from './services/auth.service.js';
+import { RegistrationMailService } from './services/registration-mail.service.js';
+import { RegistrationService } from './services/registration.service.js';
+import { PasswordResetService } from './services/password-reset.service.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
 
 @Module({
@@ -14,6 +17,9 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
   controllers: [AuthController],
   providers: [
     AuthService,
+    RegistrationService,
+    PasswordResetService,
+    RegistrationMailService,
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,

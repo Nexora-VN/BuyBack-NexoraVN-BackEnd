@@ -39,7 +39,7 @@ export class BankService {
           userId,
           bankCode: input.bankCode,
           bankName: input.bankName,
-          bankBranch: input.bankBranch,
+          bankBranch: null,
           accountHolder: input.accountHolder,
           accountCiphertext: secret.ciphertext,
           accountIv: secret.iv,

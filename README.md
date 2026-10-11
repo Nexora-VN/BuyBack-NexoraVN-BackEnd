@@ -37,6 +37,8 @@ Available URLs:
 
 Access tokens use the Swagger `access-token` Bearer scheme. Refresh tokens are hashed in `aff.auth_sessions`, rotated on every refresh, and revoked by logout. Disabled or soft-deleted users cannot authenticate.
 
+Google ID-token login at `POST /api/v1/auth/google` requires `GOOGLE_OAUTH_CLIENT_IDS`, a comma-separated list of accepted OAuth client IDs. Include the web client ID and any mobile client IDs that issue ID tokens. The backend verifies the token signature, issuer, expiry, audience, and verified email before creating its own session. Mobile access-token login remains supported.
+
 ## Users CRUD
 
 | Method   | Path                | Description                                   |

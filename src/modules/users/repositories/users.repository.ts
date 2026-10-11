@@ -4,7 +4,7 @@ import type { ErrorCode } from '../../../common/domain/error-code.js';
 export interface UserRecord {
   id: string;
   email: string;
-  phoneNumber: string;
+  phoneNumber: string | null;
   passwordHash: string;
   displayName: string | null;
   fullName: string | null;

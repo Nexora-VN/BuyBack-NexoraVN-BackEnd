@@ -4,13 +4,17 @@ import { z } from 'zod';
 export const money = z.string().regex(/^\d{1,18}$/);
 export const reason = z.string().trim().min(5).max(1000);
 export const key = z.string().trim().min(8).max(150);
-export const bankInput = z.object({
-  bankCode: z.string().trim().min(2).max(20),
-  bankName: z.string().trim().min(2).max(100),
-  bankBranch: z.string().trim().max(100).optional(),
-  accountHolder: z.string().trim().min(2).max(120),
-  accountNumber: z.string().regex(/^[0-9]{6,30}$/),
-});
+export const bankInput = z
+  .object({
+    bankCode: z.string().trim().min(2).max(20),
+    bankName: z.string().trim().min(2).max(100),
+    accountHolder: z.string().trim().min(2).max(120),
+    accountNumber: z.string().regex(/^\d{6,30}$/),
+  })
+  .superRefine((value, context) => {
+    if (value.bankCode === 'MOMO' && !/^0\d{9}$/.test(value.accountNumber))
+      context.addIssue({ code: 'custom', path: ['accountNumber'], message: 'MOMO_PHONE_INVALID' });
+  });
 export const settlementInput = z.object({
   reference: z.string().trim().min(5).max(150),
   commissionIds: z

@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
+import { randomUUID } from 'node:crypto';
 import { UserRole, UserStatus } from '../../../common/domain/enums.js';
 import { PrismaService } from '../../../infrastructure/database/prisma/prisma.service.js';
 import type {
@@ -33,31 +33,17 @@ export class PrismaAuthRepository extends AuthRepository {
 
   async createOAuthUser(data: CreateOAuthUserData): Promise<AuthUserRecord> {
     const passwordHash = await argon2.hash(randomUUID());
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const randomSuffix = Math.floor(10000000 + Math.random() * 90000000).toString();
-      const phoneNumber = `09${randomSuffix}`;
-      try {
-        return await this.prisma.user.create({
-          data: {
-            email: data.email,
-            phoneNumber,
-            passwordHash,
-            displayName: data.displayName || data.email.split('@')[0],
-            fullName: data.fullName || null,
-            role: UserRole.USER,
-            status: UserStatus.ACTIVE,
-          },
-          select: { id: true, email: true, passwordHash: true, role: true, status: true },
-        });
-      } catch (err: unknown) {
-        const prismaError = err as { code?: string; meta?: { target?: string[] } };
-        if (prismaError?.code === 'P2002' && prismaError?.meta?.target?.includes('phone_number')) {
-          continue;
-        }
-        throw err;
-      }
-    }
-    throw new Error('Không thể tạo số điện thoại định danh cho tài khoản OAuth');
+    return this.prisma.user.create({
+      data: {
+        email: data.email,
+        passwordHash,
+        displayName: data.displayName || data.email.split('@')[0],
+        fullName: data.fullName || null,
+        role: UserRole.USER,
+        status: UserStatus.ACTIVE,
+      },
+      select: { id: true, email: true, passwordHash: true, role: true, status: true },
+    });
   }
 
   async createSession(data: CreateAuthSessionData): Promise<void> {
