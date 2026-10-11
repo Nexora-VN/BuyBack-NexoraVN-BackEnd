@@ -9,7 +9,6 @@ export class AddLiveTagClient {
   async report(apiKey: string, accountId: string, from: string, to: string, page: number) {
     const url = new URL('https://addlivetag.com/api/v1/conversions.php');
     url.search = new URLSearchParams({
-      api_key: apiKey,
       type: 'items',
       account_id: accountId,
       from,
@@ -22,7 +21,7 @@ export class AddLiveTagClient {
       try {
         const response = await fetch(url, {
           redirect: 'error',
-          headers: { Accept: 'application/json' },
+          headers: { Accept: 'application/json', 'X-API-Key': apiKey },
           signal: AbortSignal.timeout(30000),
         });
         event('debug', 'provider.report.response', {

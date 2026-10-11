@@ -6,6 +6,8 @@ Use `GET /api/v1/conversions.php` with `type=items`, the configured account,
 from/to dates and all pages. Monetary fields are integer VND, stored as BigInt
 and serialized as strings. Never divide them by 100000. The response summary is
 an account/range aggregate, not a user balance or a payment receipt.
+Send the API key in `X-API-Key`, as AddLiveTag's portal recommends, so it does
+not appear in request URLs or access logs.
 
 The supplied six-item sample has four cancellations, two completed items,
 4913 VND estimated commission and 1983 gross_commission. Sum row commissions
@@ -13,6 +15,14 @@ against estimated_total_commission; do not substitute gross_commission, multiply
 commission by qty, or infer a paid amount from either aggregate. Cancelled rows
 may retain nonzero qty/order_value. MCN fees remain a manual review case until
 net/gross semantics are verified; do not guess a deduction.
+
+The AddLiveTag portal labels `estimated_total_commission` as original commission.
+Its final commission display subtracts the 0.98% Shopee service fee, so that
+display is not the comparison target for item-level commissions. In production,
+69 recent reports had item commissions exactly 1 VND above the API summary;
+108 other reports matched exactly. Accept only this observed +1 VND difference,
+record both totals and the difference in the completed batch summary, and warn
+in operations logs. Larger or reverse differences still fail reconciliation.
 
 The six-item regression fixture preserves financial and tracking fields from the
 user sample; product names are shortened and images omitted.
