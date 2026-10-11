@@ -7,6 +7,7 @@ import {
 } from './addlivetag.contract.js';
 import { AddLiveTagEngine } from './addlivetag-engine.js';
 import { AddLiveTagClient } from './addlivetag.client.js';
+import { validateCommissionSummary } from './reconciliation.service.js';
 import type { ConfigService } from '@nestjs/config';
 import type { ConversionItem } from './addlivetag.contract.js';
 import { SettlementService } from '../finance/settlement.service.js';
@@ -121,6 +122,18 @@ describe('Date Range Splitting', () => {
   });
 });
 
+describe('AddLiveTag commission summary validation', () => {
+  it('accepts matching totals and the observed one-VND item rounding difference', () => {
+    expect(validateCommissionSummary(84905n, '84905')).toBe(0n);
+    expect(validateCommissionSummary(84906n, '84905')).toBe(1n);
+  });
+
+  it('rejects larger differences and summaries above the item total', () => {
+    expect(() => validateCommissionSummary(84907n, '84905')).toThrow('SUMMARY_COMMISSION_MISMATCH');
+    expect(() => validateCommissionSummary(84904n, '84905')).toThrow('SUMMARY_COMMISSION_MISMATCH');
+  });
+});
+
 describe('AddLiveTagClient', () => {
   let client: AddLiveTagClient;
   beforeEach(() => {
@@ -148,6 +161,22 @@ describe('AddLiveTagClient', () => {
       client.report('secret-api-key', '420', '2026-09-01', '2026-09-07', 1),
     ).rejects.toThrow('PROVIDER_BAD_REQUEST');
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the API key in a header and keeps it out of the URL', async () => {
+    const fetchSpy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('Bad Request', { status: 400 }));
+
+    await expect(
+      client.report('secret-api-key', '420', '2026-09-01', '2026-09-07', 1),
+    ).rejects.toThrow('PROVIDER_BAD_REQUEST');
+
+    const [url, options] = fetchSpy.mock.calls[0]!;
+    expect(url).toBeInstanceOf(URL);
+    expect((url as URL).href).not.toContain('secret-api-key');
+    expect((url as URL).searchParams.get('type')).toBe('items');
+    expect(new Headers(options?.headers).get('X-API-Key')).toBe('secret-api-key');
   });
 
   it('retries transient 429 and 500 errors with backoff', async () => {

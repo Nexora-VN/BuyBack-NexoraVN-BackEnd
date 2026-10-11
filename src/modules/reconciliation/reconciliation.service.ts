@@ -13,6 +13,16 @@ import { splitDateRange, type ConversionItem } from './addlivetag.contract.js';
 function vietnamDate(offset: number) {
   return new Date(Date.now() + 7 * 3600000 - offset * 86400000).toISOString().slice(0, 10);
 }
+
+export function validateCommissionSummary(itemTotal: bigint, reportedTotal: string): bigint {
+  const difference = itemTotal - BigInt(reportedTotal);
+  // AddLiveTag can round the report summary one VND below its item-level amounts.
+  // Keep rejecting every other discrepancy rather than publishing an incomplete report.
+  if (difference !== 0n && difference !== 1n)
+    throw new ProviderError('SUMMARY_COMMISSION_MISMATCH');
+  return difference;
+}
+
 @Injectable()
 export class ReconciliationService {
   private readonly owner = randomUUID();
@@ -186,6 +196,7 @@ export class ReconciliationService {
         seenPages = new Set<string>();
       let total: number | undefined,
         summary: string | undefined,
+        summaryDetails: Record<string, unknown> = {},
         received = 0,
         commission = 0n;
       for (let page = 1; page <= 10000; page++) {
@@ -242,8 +253,20 @@ export class ReconciliationService {
         received += report.data.length;
         if (groups.size > total) throw new ProviderError('PAGINATION_COUNT_MISMATCH');
         if (groups.size === total) {
-          if (commission !== BigInt(report.summary.estimated_total_commission))
-            throw new ProviderError('SUMMARY_COMMISSION_MISMATCH');
+          const difference = validateCommissionSummary(
+            commission,
+            report.summary.estimated_total_commission,
+          );
+          summaryDetails = {
+            ...report.summary,
+            item_commission_total: commission.toString(),
+            item_summary_difference_vnd: difference.toString(),
+          };
+          if (difference !== 0n)
+            event('warn', 'reconciliation.summary.rounding_difference', {
+              batchId: id,
+              differenceVnd: difference.toString(),
+            });
           break;
         }
         if (!report.data.length || page === 10000) throw new ProviderError('INCOMPLETE_PAGINATION');
@@ -266,7 +289,12 @@ export class ReconciliationService {
         );
         await tx.reconciliationBatch.update({
           where: { id },
-          data: { status: 'COMPLETED', records: received, completedAt: new Date() },
+          data: {
+            status: 'COMPLETED',
+            records: received,
+            summary: json(summaryDetails),
+            completedAt: new Date(),
+          },
         });
       });
       this.logger.log({
