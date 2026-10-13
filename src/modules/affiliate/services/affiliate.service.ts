@@ -144,6 +144,8 @@ export class AffiliateService {
 
   private toResponse(link: AffiliateLinkRecord): AffiliateResponseDto {
     return {
+      user: link.user,
+      product: link.product,
       id: link.id,
       subId1: link.subId1,
       subId2: link.subId2,

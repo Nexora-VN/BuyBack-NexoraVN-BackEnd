@@ -85,6 +85,9 @@ export class PrismaAffiliateRepository extends AffiliateRepository {
 
     if (options.search) {
       const searchOr: AffiliateLinkWhereInput[] = [
+        { user: { email: { contains: options.search, mode: 'insensitive' } } },
+        { user: { displayName: { contains: options.search, mode: 'insensitive' } } },
+        { product: { productName: { contains: options.search, mode: 'insensitive' } } },
         { fullLinkSystem: { contains: options.search, mode: 'insensitive' } },
         { shortLink: { contains: options.search, mode: 'insensitive' } },
         { longLink: { contains: options.search, mode: 'insensitive' } },
@@ -113,6 +116,10 @@ export class PrismaAffiliateRepository extends AffiliateRepository {
         skip: options.skip,
         take: options.take,
         orderBy: { createdAt: options.sort ?? 'desc' },
+        include: {
+          user: { select: { id: true, email: true, displayName: true } },
+          product: { select: { id: true, productName: true, imageUrl: true } },
+        },
       }),
       this.prisma.affiliateLink.count({ where }),
     ]);

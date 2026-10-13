@@ -112,6 +112,23 @@ describe('Authentication and Users API (e2e)', () => {
         expect((response.body as { displayName: string }).displayName).toBe('Updated User');
       });
     await request(app.getHttpServer())
+      .patch(`/api/v1/users/${createdBody.id}`)
+      .set('Authorization', authorization)
+      .send({ phoneNumber: null })
+      .expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ phoneNumber: null }));
+    await request(app.getHttpServer())
+      .patch(`/api/v1/users/${createdBody.id}`)
+      .set('Authorization', authorization)
+      .send({ fullName: 'Tên mới' })
+      .expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ fullName: 'Tên mới', phoneNumber: null }));
+    await request(app.getHttpServer())
+      .patch(`/api/v1/users/${createdBody.id}`)
+      .set('Authorization', authorization)
+      .send({ phoneNumber: '123' })
+      .expect(400);
+    await request(app.getHttpServer())
       .delete(`/api/v1/users/${createdBody.id}`)
       .set('Authorization', authorization)
       .expect(204);

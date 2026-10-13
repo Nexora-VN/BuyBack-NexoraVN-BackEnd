@@ -36,7 +36,11 @@ export class WithdrawalService {
         create: { id: 1 },
         update: {},
       });
-      if (amount < policy.minWithdrawal) throw new ConflictException('MINIMUM_WITHDRAWAL_50000');
+      if (amount < policy.minWithdrawal)
+        throw new ConflictException({
+          message: 'MINIMUM_WITHDRAWAL_NOT_MET',
+          minWithdrawal: policy.minWithdrawal.toString(),
+        });
       const bank = await tx.userBank.findFirst({
         where: { id: input.bankId, userId, deleteAt: null, status: 'APPROVED' },
       });

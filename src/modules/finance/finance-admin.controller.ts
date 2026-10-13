@@ -172,9 +172,132 @@ export class FinanceAdminController {
     if (!batch) throw new NotFoundException('BATCH_NOT_FOUND');
     return batch;
   }
+  @Get('reconciliation/batches/:id/items')
+  async batchItems(@Param('id', ParseUUIDPipe) id: string, @Query('page') rawPage?: string) {
+    const page = Math.max(1, Math.min(10000, Math.trunc(Number(rawPage) || 1)));
+    const batch = await this.repo.db.reconciliationBatch.findUnique({ where: { id } });
+    if (!batch) throw new NotFoundException('BATCH_NOT_FOUND');
+    const where = { batchId: id };
+    const [snapshots, total] = await Promise.all([
+      this.repo.db.conversionItemSnapshot.findMany({
+        where,
+        orderBy: [{ page: 'asc' }, { position: 'asc' }],
+        skip: (page - 1) * 20,
+        take: 20,
+      }),
+      this.repo.db.conversionItemSnapshot.count({ where }),
+    ]);
+    const checkouts = await this.repo.db.providerCheckout.findMany({
+      where: {
+        provider: `ADDLIVETAG:${batch.accountId}`,
+        checkoutId: { in: [...new Set(snapshots.map((item) => item.checkoutId))] },
+      },
+      select: {
+        checkoutId: true,
+        revision: true,
+        conversionState: true,
+        commission: { select: { user: { select: { id: true, email: true, displayName: true } } } },
+      },
+    });
+    const byCheckout = new Map(checkouts.map((checkout) => [checkout.checkoutId, checkout]));
+    return {
+      data: snapshots.map((snapshot) => ({
+        id: snapshot.id,
+        checkoutId: snapshot.checkoutId,
+        orderSn: snapshot.orderSn,
+        ...(snapshot.payload as Record<string, unknown>),
+        conversionState: byCheckout.get(snapshot.checkoutId)?.conversionState ?? null,
+        user: byCheckout.get(snapshot.checkoutId)?.commission?.user ?? null,
+      })),
+      meta: { page, limit: 20, total, totalPages: Math.ceil(total / 20) },
+    };
+  }
   @Get('reconciliation/batches/:id/issues')
   batchIssues(@Param('id', ParseUUIDPipe) id: string, @Query() query: unknown) {
     return this.queries.list('issues', validate(listInput, query), undefined, id);
+  }
+  @Get('reconciliation/issues/:id/context')
+  async issueContext(@Param('id', ParseUUIDPipe) id: string) {
+    const issue = await this.repo.db.reconciliationIssue.findUnique({ where: { id } });
+    if (!issue) throw new NotFoundException('ISSUE_NOT_FOUND');
+    const checkout = issue.checkoutId
+      ? await this.repo.db.providerCheckout.findUnique({
+          where: {
+            provider_checkoutId: { provider: issue.provider, checkoutId: issue.checkoutId },
+          },
+          select: {
+            checkoutId: true,
+            revision: true,
+            sourceHash: true,
+            rawStatus: true,
+            conversionState: true,
+            netRaw: true,
+            payload: true,
+            commission: {
+              select: {
+                state: true,
+                estimatedVnd: true,
+                affiliateLinkId: true,
+                user: { select: { id: true, email: true, displayName: true } },
+              },
+            },
+          },
+        })
+      : null;
+    const currentLink = checkout?.commission?.affiliateLinkId
+      ? await this.repo.db.affiliateLink.findUnique({
+          where: { id: checkout.commission.affiliateLinkId },
+          select: {
+            id: true,
+            user: { select: { id: true, email: true, displayName: true } },
+            product: { select: { productName: true, imageUrl: true } },
+          },
+        })
+      : null;
+    return {
+      issue: {
+        id: issue.id,
+        type: issue.type,
+        status: issue.status,
+        resolution: issue.resolution,
+        checkoutId: issue.checkoutId,
+        sourceHash: issue.sourceHash,
+      },
+      checkout: checkout && {
+        ...checkout,
+        netRaw: checkout.netRaw.toString(),
+        items: Array.isArray(checkout.payload) ? checkout.payload : [],
+        payload: undefined,
+      },
+      currentLink,
+    };
+  }
+  @Get('reconciliation/issues/:id/affiliate-links')
+  async issueAffiliateLinks(@Param('id', ParseUUIDPipe) id: string, @Query('search') search = '') {
+    const issue = await this.repo.db.reconciliationIssue.findUnique({ where: { id } });
+    if (!issue) throw new NotFoundException('ISSUE_NOT_FOUND');
+    const term = search.trim().slice(0, 100);
+    if (term.length < 2) return { data: [] };
+    const links = await this.repo.db.affiliateLink.findMany({
+      where: {
+        deleteAt: null,
+        OR: [
+          { user: { email: { contains: term, mode: 'insensitive' } } },
+          { user: { displayName: { contains: term, mode: 'insensitive' } } },
+          { product: { productName: { contains: term, mode: 'insensitive' } } },
+          { subId4: { contains: term } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        createdAt: true,
+        user: { select: { id: true, email: true, displayName: true } },
+        product: { select: { productName: true, imageUrl: true } },
+      },
+    });
+    return { data: links };
   }
   @Post('reconciliation/batches/:id/retry')
   @Throttle({ default: RATE_LIMITS.sync })
@@ -201,10 +324,44 @@ export class FinanceAdminController {
   async settlement(@Param('id', ParseUUIDPipe) id: string) {
     const result = await this.repo.db.settlementBatch.findUnique({
       where: { id },
-      include: { items: { include: { commission: true } } },
+      include: {
+        items: {
+          include: {
+            commission: {
+              include: {
+                user: { select: { id: true, email: true, displayName: true } },
+                checkout: {
+                  select: {
+                    checkoutId: true,
+                    payload: true,
+                    orders: { select: { orderSn: true }, take: 1 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
     if (!result) throw new NotFoundException('SETTLEMENT_NOT_FOUND');
-    return result;
+    return {
+      ...result,
+      items: result.items.map((item) => {
+        const first = Array.isArray(item.commission.checkout.payload)
+          ? (item.commission.checkout.payload[0] as Record<string, unknown> | undefined)
+          : undefined;
+        return {
+          ...item,
+          source: {
+            orderSn: item.commission.checkout.orders[0]?.orderSn ?? null,
+            productName: typeof first?.item_name === 'string' ? first.item_name : null,
+            imageUrl: typeof first?.image === 'string' ? first.image : null,
+            user: item.commission.user,
+          },
+          commission: { ...item.commission, checkout: undefined },
+        };
+      }),
+    };
   }
   @Post('settlements/:id/confirm')
   @Roles(UserRole.SUPER_ADMIN)

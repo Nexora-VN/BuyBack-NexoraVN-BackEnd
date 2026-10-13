@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsPhoneNumber,
   IsString,
+  ValidateIf,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -18,10 +19,10 @@ export class UpdateUserDto {
   email?: string;
 
   @ApiPropertyOptional({ example: '+84901234567' })
-  @IsOptional()
+  @ValidateIf((_object, value: unknown) => value !== undefined && value !== null)
   @IsPhoneNumber()
   @MaxLength(20)
-  phoneNumber?: string;
+  phoneNumber?: string | null;
 
   @ApiPropertyOptional({ minLength: 8, writeOnly: true })
   @IsOptional()

@@ -1,6 +1,8 @@
 import type { AffiliateLinkStatus, ConvertOrigin } from '../../../common/domain/enums.js';
 
 export interface AffiliateLinkRecord {
+  user?: { id: string; email: string; displayName: string | null };
+  product?: { id: string; productName: string; imageUrl: string };
   id: string;
   subId1: string | null;
   subId2: string | null;

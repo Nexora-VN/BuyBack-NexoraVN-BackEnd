@@ -120,4 +120,32 @@ describe('UsersService', () => {
   it('returns not found for an unknown user', async () => {
     await expect(service.findById('missing')).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('updates a user without a phone and can clear an existing phone', async () => {
+    const user = await service.create(
+      { email: 'phone@example.com', phoneNumber: '+84901234567', password: 'password123' },
+      actorId,
+    );
+    await service.update(user.id, { phoneNumber: null }, actorId);
+    const renamed = await service.update(user.id, { displayName: 'Tên mới' }, actorId);
+    expect(renamed).toMatchObject({ phoneNumber: null, displayName: 'Tên mới' });
+  });
+
+  it('rejects a phone number already assigned to another user', async () => {
+    const first = await service.create(
+      { email: 'first@example.com', phoneNumber: '+84901234567', password: 'password123' },
+      actorId,
+    );
+    const second = await service.create(
+      { email: 'second@example.com', phoneNumber: '+84907654321', password: 'password123' },
+      actorId,
+    );
+    expect(first.id).not.toBe(second.id);
+    await expect(
+      service.update(second.id, { phoneNumber: first.phoneNumber }, actorId),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.update(second.id, { email: first.email }, actorId)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
 });

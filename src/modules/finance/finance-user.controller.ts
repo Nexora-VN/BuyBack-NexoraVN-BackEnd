@@ -71,6 +71,10 @@ export class FinanceUserController {
   wallet(@CurrentUser() actor: AuthenticatedUser) {
     return this.queries.wallet(actor.id);
   }
+  @Get('withdrawal-policy')
+  withdrawalPolicy() {
+    return this.queries.withdrawalPolicy();
+  }
   @Get('dashboard')
   dashboard(@CurrentUser() actor: AuthenticatedUser) {
     return this.queries.dashboard(actor.id);
