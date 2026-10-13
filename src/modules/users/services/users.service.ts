@@ -59,7 +59,7 @@ export class UsersService {
   async update(id: string, input: UpdateUserDto, actorId: string): Promise<UserResponseDto> {
     const currentUser = await this.getUser(id);
     const email = input.email ? this.normalizeEmail(input.email) : undefined;
-    const phoneNumber = input.phoneNumber?.trim();
+    const phoneNumber = input.phoneNumber === null ? null : input.phoneNumber?.trim();
 
     if (email && email !== currentUser.email) {
       await this.ensureEmailAvailable(email);

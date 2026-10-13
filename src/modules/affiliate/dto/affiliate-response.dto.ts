@@ -2,6 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AffiliateLinkStatus, ConvertOrigin } from '../../../common/domain/enums.js';
 
 export class AffiliateResponseDto {
+  @ApiPropertyOptional()
+  user?: { id: string; email: string; displayName: string | null };
+
+  @ApiPropertyOptional()
+  product?: { id: string; productName: string; imageUrl: string };
   @ApiProperty()
   id!: string;
 

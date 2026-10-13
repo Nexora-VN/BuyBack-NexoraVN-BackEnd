@@ -26,7 +26,6 @@ import { Roles } from '../../auth/decorators/roles.decorator.js';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../../auth/guards/roles.guard.js';
 import type { AuthenticatedUser } from '../../auth/interfaces/authenticated-user.js';
-// import { CreateAffiliateLinkDto } from '../dto/create-affiliate-link.dto.js';
 import { ListAffiliateLinksQueryDto } from '../dto/list-affiliate-query.dto.js';
 import { UpdateAffiliateLinkDto } from '../dto/update-affiliate-link.dto.js';
 import {
@@ -48,16 +47,6 @@ export class AffiliateController {
     private readonly affiliateService: AffiliateService,
     private readonly generateAffiliateService: GenerateAffiliateService,
   ) {}
-
-  // @Post()
-  // @ApiOperation({ summary: 'Create an affiliate link' })
-  // @ApiCreatedResponse({ type: AffiliateResponseDto })
-  // create(
-  //   @Body() input: CreateAffiliateLinkDto,
-  //   @CurrentUser() actor: AuthenticatedUser,
-  // ): Promise<AffiliateResponseDto> {
-  //   return this.affiliateService.create(input, actor.id);
-  // }
 
   @Get()
   @ApiOperation({ summary: 'List affiliate links with search filters and pagination' })

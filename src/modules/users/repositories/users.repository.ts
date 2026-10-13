@@ -32,7 +32,7 @@ export interface CreateUserData {
 
 export interface UpdateUserData {
   email?: string;
-  phoneNumber?: string;
+  phoneNumber?: string | null;
   passwordHash?: string;
   displayName?: string;
   fullName?: string;

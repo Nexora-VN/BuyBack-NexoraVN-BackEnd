@@ -34,6 +34,7 @@ const withdrawalSelect = {
   createdAt: true,
   transferReference: true,
   bank: { select: bankSelect },
+  user: { select: { id: true, email: true, displayName: true } },
 } as const;
 const sourceOrderSelect = {
   id: true,
@@ -292,6 +293,7 @@ export class FinanceQueryService {
               checkout: true,
               settlementItem: true,
               cashback: true,
+              user: { select: { id: true, email: true, displayName: true } },
             },
           }),
           db.commission.count({ where }),
@@ -307,7 +309,12 @@ export class FinanceQueryService {
           const row = value as Awaited<
             ReturnType<
               typeof db.commission.findMany<{
-                include: { checkout: true; settlementItem: true; cashback: true };
+                include: {
+                  checkout: true;
+                  settlementItem: true;
+                  cashback: true;
+                  user: { select: { id: true; email: true; displayName: true } };
+                };
               }>
             >
           >[number];
@@ -317,8 +324,22 @@ export class FinanceQueryService {
           ];
           const { checkout, settlementItem: _item, ...safe } = row;
           void _item;
+          const first = Array.isArray(checkout.payload)
+            ? (checkout.payload[0] as Record<string, unknown> | undefined)
+            : undefined;
           return {
             ...safe,
+            productSummary: first
+              ? {
+                  name: first.item_name ?? null,
+                  imageUrl: first.image ?? null,
+                  itemCount: (checkout.payload as unknown[]).length,
+                  platform: detectPlatform(
+                    checkout.provider,
+                    typeof first.affiliate === 'string' ? first.affiliate : undefined,
+                  ),
+                }
+              : null,
             checkout: {
               checkoutId: checkout.checkoutId,
               purchasedAt: checkout.purchasedAt,
@@ -415,6 +436,16 @@ export class FinanceQueryService {
           db.userBank.findMany({ ...page, where, select: bankSelect }),
           db.userBank.count({ where }),
         ]);
+        const bankUserIds = (data as { userId: string }[]).map((item) => item.userId);
+        const bankUsers = await db.user.findMany({
+          where: { id: { in: bankUserIds } },
+          select: { id: true, email: true, displayName: true },
+        });
+        const bankUsersById = new Map(bankUsers.map((item) => [item.id, item]));
+        data = data.map((item) => ({
+          ...(item as object),
+          user: bankUsersById.get((item as { userId: string }).userId) ?? null,
+        }));
         break;
       }
       case 'affiliate-links': {
@@ -454,7 +485,15 @@ export class FinanceQueryService {
           ...(query.status ? { type: query.status } : {}),
         };
         [data, total] = await Promise.all([
-          db.walletTransaction.findMany({ ...page, where }),
+          db.walletTransaction.findMany({
+            ...page,
+            where,
+            include: {
+              wallet: {
+                select: { user: { select: { id: true, email: true, displayName: true } } },
+              },
+            },
+          }),
           db.walletTransaction.count({ where }),
         ]);
         const rows = data as { type: string; reference: string }[];
@@ -494,6 +533,8 @@ export class FinanceQueryService {
           const orders = ordersByCommission.get(row.reference) ?? [];
           return {
             ...row,
+            user: (row as { wallet?: { user?: unknown } }).wallet?.user ?? null,
+            wallet: undefined,
             source: {
               order: orders[0] ?? null,
               orders,
@@ -528,6 +569,47 @@ export class FinanceQueryService {
           db.reconciliationIssue.findMany({ ...page, where }),
           db.reconciliationIssue.count({ where }),
         ]);
+        const issues = data as { provider: string; checkoutId: string | null }[];
+        const checkouts = await db.providerCheckout.findMany({
+          where: {
+            checkoutId: {
+              in: issues.flatMap((item) => (item.checkoutId ? [item.checkoutId] : [])),
+            },
+            provider: { in: [...new Set(issues.map((item) => item.provider))] },
+          },
+          select: {
+            provider: true,
+            checkoutId: true,
+            payload: true,
+            revision: true,
+            commission: {
+              select: { user: { select: { id: true, email: true, displayName: true } } },
+            },
+          },
+        });
+        const byKey = new Map(
+          checkouts.map((item) => [`${item.provider}:${item.checkoutId}`, item]),
+        );
+        data = data.map((value) => {
+          const issue = value as { provider: string; checkoutId: string | null };
+          const checkout = byKey.get(`${issue.provider}:${issue.checkoutId}`);
+          const first = Array.isArray(checkout?.payload)
+            ? (checkout.payload[0] as Record<string, unknown> | undefined)
+            : undefined;
+          return {
+            ...issue,
+            orderSn: first?.order_sn ?? null,
+            productSummary: first
+              ? {
+                  name: first.item_name ?? null,
+                  imageUrl: first.image ?? null,
+                  itemCount: (checkout?.payload as unknown[]).length,
+                }
+              : null,
+            user: checkout?.commission?.user ?? null,
+            revision: checkout?.revision ?? null,
+          };
+        });
         break;
       }
       case 'settlements': {
@@ -545,6 +627,18 @@ export class FinanceQueryService {
           db.auditLog.findMany({ ...page, where }),
           db.auditLog.count({ where }),
         ]);
+        const actorIds = (data as { actorId: string | null }[]).flatMap((row) =>
+          row.actorId ? [row.actorId] : [],
+        );
+        const actors = await db.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, email: true, displayName: true },
+        });
+        const actorsById = new Map(actors.map((actor) => [actor.id, actor]));
+        data = data.map((row) => ({
+          ...(row as object),
+          actor: actorsById.get((row as { actorId: string | null }).actorId ?? '') ?? null,
+        }));
         break;
       }
     }
@@ -706,6 +800,10 @@ export class FinanceQueryService {
   async wallet(userId: string) {
     const row = await this.repo.db.wallet.findUnique({ where: { userId } });
     return row ?? { userId, available: 0n, reserved: 0n };
+  }
+  async withdrawalPolicy() {
+    const policy = await this.repo.db.affiliatePolicy.findUnique({ where: { id: 1 } });
+    return { minWithdrawal: (policy?.minWithdrawal ?? 50000n).toString() };
   }
   async dashboard(userId?: string) {
     const db = this.repo.db;
