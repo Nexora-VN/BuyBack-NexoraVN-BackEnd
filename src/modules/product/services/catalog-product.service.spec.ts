@@ -46,7 +46,7 @@ describe('CatalogProductService', () => {
       productName: 'Test Product',
       price: '134300',
       productUrl: 'https://shopee.vn/product/46182105/26771994719',
-      estimatedUserCashbackVnd: '11986',
+      estimatedUserCashbackVnd: '11281',
       dataStatus: 'current',
       lastUpdate: '2026-08-27T01:20:53.000Z',
       priceStats: { avgPrice: '136055', priceChange30d: '600' },

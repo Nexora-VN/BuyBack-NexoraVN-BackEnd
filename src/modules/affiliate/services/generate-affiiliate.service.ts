@@ -105,7 +105,7 @@ export class GenerateAffiliateService {
       const commission = product.commission;
       const estimatedUserCashbackVnd =
         typeof commission === 'string' && /^\d+$/.test(commission)
-          ? splitCashback(BigInt(commission), BigInt(policy?.userBps ?? 8500)).user.toString()
+          ? splitCashback(BigInt(commission), BigInt(policy?.userBps ?? 8000)).user.toString()
           : null;
 
       const affiliateLinkId = randomUUID();

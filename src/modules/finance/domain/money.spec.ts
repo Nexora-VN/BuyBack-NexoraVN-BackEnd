@@ -8,7 +8,7 @@ describe('Exact finance arithmetic', () => {
   it('allocates all settlement VND and assigns remainder deterministically', () => {
     expect(allocateNet(10n, [1n, 1n, 1n])).toEqual([3n, 3n, 4n]);
     const split = splitCashback(1553n);
-    expect(split).toEqual({ user: 1320n, platform: 233n });
+    expect(split).toEqual({ user: 1242n, platform: 311n });
     expect(split.user + split.platform).toBe(1553n);
   });
   it('rejects missing, malformed, or extra attribution segments', () => {

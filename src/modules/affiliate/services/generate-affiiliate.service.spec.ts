@@ -42,7 +42,7 @@ describe('GenerateAffiliateService', () => {
   it('uses provider origin and preserves product and all fallback tracking fields', async () => {
     const result = await service.generateAffiliateLinkBySystem(input, 'user-id');
     expect(result.product).toEqual(product);
-    expect(result.estimatedUserCashbackVnd).toBe('11986');
+    expect(result.estimatedUserCashbackVnd).toBe('11281');
     expect(() => JSON.stringify(result)).not.toThrow();
     expect(getProductByUrl).toHaveBeenCalledWith(input);
     expect(products.upsertFromProvider).toHaveBeenCalledWith(

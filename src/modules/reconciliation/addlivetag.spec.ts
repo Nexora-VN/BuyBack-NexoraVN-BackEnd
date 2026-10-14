@@ -397,12 +397,12 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
       }),
     );
 
-    // Cashback allocated with 85% = floor(2500 * 8500 / 10000) = 2125
+    // Default cashback allocation is 80% of 2500 VND.
     expect(mockTx.cashbackAllocation.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
-          userAmount: 2125n,
-          platformAmount: 375n,
+          userAmount: 2000n,
+          platformAmount: 500n,
           state: 'PENDING',
         }),
       }),
