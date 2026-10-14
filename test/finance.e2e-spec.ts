@@ -324,7 +324,7 @@ describe('Affiliate finance end-to-end', () => {
       })
       .expect(409);
   });
-  it('confirms settlement exactly once under concurrent requests and balances 85/15', async () => {
+  it('confirms settlement exactly once under concurrent requests and balances 80/20', async () => {
     const created = await api(superToken)
       .post('admin/settlements', {
         reference: prefix,
@@ -344,14 +344,15 @@ describe('Affiliate finance end-to-end', () => {
         .expect(201),
     ]);
     const cashback = await db.cashbackAllocation.findUniqueOrThrow({ where: { commissionId } });
-    expect(cashback.userAmount).toBe(84150n);
-    expect(cashback.platformAmount).toBe(14850n);
+    expect(cashback.userBps).toBe(8000);
+    expect(cashback.userAmount).toBe(79200n);
+    expect(cashback.platformAmount).toBe(19800n);
     expect(
       await db.walletTransaction.count({
         where: { reference: commissionId, type: 'CASHBACK_CREDIT' },
       }),
     ).toBe(1);
-    expect((await api(userToken).get('me/wallet')).body).toMatchObject({ available: '84150' });
+    expect((await api(userToken).get('me/wallet')).body).toMatchObject({ available: '79200' });
     const checkout = await db.providerCheckout.findFirstOrThrow({ where: { checkoutId: prefix } });
     await db.providerOrder.create({
       data: {
@@ -463,7 +464,7 @@ describe('Affiliate finance end-to-end', () => {
     expect(replies.map((r) => r.status).sort()).toEqual([201, 409]);
     withdrawalId = (replies.find((r) => r.status === 201)!.body as { id: string }).id;
     const wallet = await db.wallet.findUniqueOrThrow({ where: { userId } });
-    expect(wallet.available).toBe(34150n);
+    expect(wallet.available).toBe(29200n);
     expect(wallet.reserved).toBe(50000n);
     const transactions = await api(userToken).get('me/wallet/transactions').expect(200);
     expect(
@@ -493,7 +494,7 @@ describe('Affiliate finance end-to-end', () => {
       .patch('admin/withdrawals/' + withdrawalId + '/status', rejection)
       .expect(200);
     const wallet = await db.wallet.findUniqueOrThrow({ where: { userId } });
-    expect(wallet.available).toBe(84150n);
+    expect(wallet.available).toBe(79200n);
     expect(wallet.reserved).toBe(0n);
     const replacement = await api(userToken)
       .post('me/withdrawals', { bankId, amount: '50000', idempotencyKey: randomUUID() })
