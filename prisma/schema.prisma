@@ -576,8 +576,8 @@ model Commission {
 
 model AffiliatePolicy {
   id            Int                  @id
-  userBps       Int                  @default(8500) @map("user_bps")
-  minWithdrawal BigInt               @default(50000) @map("min_withdrawal")
+  userBps       Int                  @default(8000) @map("user_bps")
+  minWithdrawal BigInt               @default(10000) @map("min_withdrawal")
   createdAt     DateTime             @default(now()) @map("created_at")
   cashbacks     CashbackAllocation[]
 
@@ -589,7 +589,7 @@ model CashbackAllocation {
   id             String          @id @default(uuid()) @db.Uuid
   commissionId   String          @unique @map("commission_id") @db.Uuid
   policyId       Int             @map("policy_id")
-  userBps        Int             @default(8500) @map("user_bps")
+  userBps        Int             @default(8000) @map("user_bps")
   userAmount     BigInt          @default(0) @map("user_amount")
   platformAmount BigInt          @default(0) @map("platform_amount")
   state          CashbackState   @default(PENDING)

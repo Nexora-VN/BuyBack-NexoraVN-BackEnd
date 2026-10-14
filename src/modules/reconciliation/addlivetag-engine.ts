@@ -272,7 +272,7 @@ export class AddLiveTagEngine {
       update: {},
     });
     const existing = await tx.cashbackAllocation.findUnique({ where: { commissionId } });
-    const userBps = existing?.userBps ?? policy.userBps ?? 8500;
+    const userBps = existing?.userBps ?? policy.userBps ?? 8000;
     const split = splitCashback(amount, BigInt(userBps));
     await tx.cashbackAllocation.upsert({
       where: { commissionId },

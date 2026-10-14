@@ -1,4 +1,4 @@
-export const USER_BPS = 8500n;
+export const USER_BPS = 8000n;
 
 export function integer(value: unknown): bigint {
   if (typeof value === 'bigint') return value;

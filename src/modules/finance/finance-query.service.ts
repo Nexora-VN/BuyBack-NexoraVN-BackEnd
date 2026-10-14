@@ -803,7 +803,7 @@ export class FinanceQueryService {
   }
   async withdrawalPolicy() {
     const policy = await this.repo.db.affiliatePolicy.findUnique({ where: { id: 1 } });
-    return { minWithdrawal: (policy?.minWithdrawal ?? 50000n).toString() };
+    return { minWithdrawal: (policy?.minWithdrawal ?? 10000n).toString() };
   }
   async dashboard(userId?: string) {
     const db = this.repo.db;

@@ -52,7 +52,7 @@ export class CatalogProductService {
     const policy = await this.db.affiliatePolicy.findUnique({ where: { id: 1 } });
     const cashback = splitCashback(
       integer(Math.floor(product.commission)),
-      BigInt(policy?.userBps ?? 8500),
+      BigInt(policy?.userBps ?? 8000),
     );
     const money = (value: number) => integer(Math.round(value)).toString();
     return {

@@ -420,8 +420,8 @@ export class FinanceAdminController {
     return (
       (await this.repo.db.affiliatePolicy.findUnique({ where: { id: 1 } })) ?? {
         id: 1,
-        userBps: 8500,
-        minWithdrawal: '50000',
+        userBps: 8000,
+        minWithdrawal: '10000',
       }
     );
   }
@@ -436,7 +436,7 @@ export class FinanceAdminController {
       create: {
         id: 1,
         userBps: input.userBps,
-        minWithdrawal: input.minWithdrawal ? BigInt(input.minWithdrawal) : 50000n,
+        minWithdrawal: input.minWithdrawal ? BigInt(input.minWithdrawal) : 10000n,
       },
       update: {
         userBps: input.userBps,
@@ -451,7 +451,7 @@ export class FinanceAdminController {
         metadata: {
           userBps: input.userBps,
           ratePercent: `${input.userBps / 100}%`,
-          minWithdrawal: input.minWithdrawal ?? '50000',
+          minWithdrawal: updated.minWithdrawal.toString(),
         },
       },
     });
