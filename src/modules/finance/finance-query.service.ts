@@ -108,6 +108,44 @@ export class FinanceQueryService {
     private readonly repo: FinanceRepository,
     private readonly config: ConfigService,
   ) {}
+  async withdrawal(id: string, userId: string) {
+    const row = await this.repo.db.withdrawal.findFirst({
+      where: { id, userId },
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        transferReference: true,
+        bankSnapshot: true,
+        history: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: { status: true, createdAt: true },
+        },
+      },
+    });
+    if (!row) throw new NotFoundException('WITHDRAWAL_NOT_FOUND');
+    const snapshot = row.bankSnapshot as {
+      bankCode: string;
+      bankName: string;
+      accountHolder: string;
+      lastFour: string;
+    };
+    return {
+      id: row.id,
+      amount: row.amount.toString(),
+      status: row.status,
+      createdAt: row.createdAt,
+      transferReference: row.transferReference,
+      bank: {
+        bankCode: snapshot.bankCode,
+        bankName: snapshot.bankName,
+        accountHolder: snapshot.accountHolder,
+        lastFour: snapshot.lastFour,
+      },
+      timeline: row.history.map((event) => ({ status: event.status, at: event.createdAt })),
+    };
+  }
   async list(resource: Resource, query: ListInput, userId?: string, batchId?: string) {
     const db = this.repo.db;
     const page = {
@@ -406,17 +444,32 @@ export class FinanceQueryService {
         break;
       }
       case 'withdrawals': {
-        const status = enumStatus<WithdrawalState>(query.status, [
-          'PENDING',
-          'PROCESSING',
-          'COMPLETED',
-          'REJECTED',
-          'FAILED',
-        ]);
+        const status =
+          query.status === 'UNSUCCESSFUL'
+            ? { in: ['REJECTED', 'FAILED'] as WithdrawalState[] }
+            : enumStatus<WithdrawalState>(query.status, [
+                'PENDING',
+                'PROCESSING',
+                'COMPLETED',
+                'REJECTED',
+                'FAILED',
+              ]);
+        const withdrawalSearch = query.search
+          ? {
+              OR: [
+                { transferReference: { contains: query.search } },
+                ...(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                  query.search,
+                )
+                  ? [{ id: query.search }]
+                  : []),
+              ],
+            }
+          : {};
         const where = {
           ...(userId ? { userId } : {}),
           ...(status ? { status } : {}),
-          ...(search ? { transferReference: search } : {}),
+          ...withdrawalSearch,
         };
         [data, total] = await Promise.all([
           db.withdrawal.findMany({ ...page, where, select: withdrawalSelect }),

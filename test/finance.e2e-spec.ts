@@ -463,6 +463,17 @@ describe('Affiliate finance end-to-end', () => {
     );
     expect(replies.map((r) => r.status).sort()).toEqual([201, 409]);
     withdrawalId = (replies.find((r) => r.status === 201)!.body as { id: string }).id;
+    const receipt = await api(userToken)
+      .get('me/withdrawals/' + withdrawalId)
+      .expect(200);
+    expect(receipt.body).toMatchObject({
+      id: withdrawalId,
+      amount: '50000',
+      status: 'PENDING',
+      bank: { bankName: 'Vietcombank', accountHolder: 'Finance Test', lastFour: '8901' },
+      timeline: [{ status: 'PENDING', at: expect.any(String) }],
+    });
+    expect(JSON.stringify(receipt.body)).not.toMatch(/012345678901|ciphertext|actorId|reason/);
     const wallet = await db.wallet.findUniqueOrThrow({ where: { userId } });
     expect(wallet.available).toBe(29200n);
     expect(wallet.reserved).toBe(50000n);
@@ -478,6 +489,12 @@ describe('Affiliate finance end-to-end', () => {
       .send({ email: other.email, password: 'finance-test-password' })
       .expect(200);
     const otherToken = (login.body as { accessToken: string }).accessToken;
+    await api(otherToken)
+      .get('me/withdrawals/' + withdrawalId)
+      .expect(404);
+    await api(userToken)
+      .get('me/withdrawals/' + randomUUID())
+      .expect(404);
     const result = await api(otherToken).get('me/orders');
     expect(result.body).toMatchObject({ meta: { total: 0 } });
     expect((await api(otherToken).get('me/cashbacks').expect(200)).body.meta.total).toBe(0);
@@ -519,6 +536,19 @@ describe('Affiliate finance end-to-end', () => {
         transferReference: prefix + 'bank',
       })
       .expect(200);
+    const completedReceipt = await api(userToken)
+      .get('me/withdrawals/' + withdrawalId)
+      .expect(200);
+    expect(completedReceipt.body).toMatchObject({
+      status: 'COMPLETED',
+      transferReference: prefix + 'bank',
+      timeline: [
+        { status: 'PENDING', at: expect.any(String) },
+        { status: 'PROCESSING', at: expect.any(String) },
+        { status: 'COMPLETED', at: expect.any(String) },
+      ],
+    });
+    expect(JSON.stringify(completedReceipt.body)).not.toMatch(/Bank transfer confirmed|actorId/);
     await publish(report(3));
     await publish(report(3));
     const wallet = await db.wallet.findUniqueOrThrow({ where: { userId } });
