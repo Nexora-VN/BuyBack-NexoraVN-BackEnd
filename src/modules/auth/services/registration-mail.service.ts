@@ -115,12 +115,12 @@ export class RegistrationMailService {
       await once(socket, isImplicitTls ? 'secureConnect' : 'connect');
       smtp = new SmtpConnection(socket);
       await smtp.read(220);
-      const greeting = await smtp.command('EHLO piggyback.local', 250);
+      const greeting = await smtp.command('EHLO piggyback.vn', 250);
       if (!isImplicitTls) {
         if (!greeting.includes('STARTTLS')) throw new Error('SMTP STARTTLS is required');
         await smtp.command('STARTTLS', 220);
         await smtp.startTls(host);
-        await smtp.command('EHLO piggyback.local', 250);
+        await smtp.command('EHLO piggyback.vn', 250);
       }
       try {
         await smtp.command(
@@ -140,9 +140,14 @@ export class RegistrationMailService {
       await smtp.command(`RCPT TO:<${to}>`, 250);
       await smtp.command('DATA', 354);
       const boundary = `piggyback-${randomUUID()}`;
+      const now = new Date().toUTCString();
+      const messageId = `<${randomUUID()}@piggyback.vn>`;
       const message = [
         `From: Piggy Back <${from}>`,
+        `Reply-To: Piggy Back <${from}>`,
         `To: <${to}>`,
+        `Date: ${now}`,
+        `Message-ID: ${messageId}`,
         `Subject: =?UTF-8?B?${Buffer.from(template.subject, 'utf8').toString('base64')}?=`,
         'MIME-Version: 1.0',
         `Content-Type: multipart/alternative; boundary="${boundary}"`,
