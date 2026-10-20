@@ -204,17 +204,37 @@ export class FirebaseMessagingService implements OnModuleInit {
   }
 
   async sendToAllUsers(payload: PushNotificationPayload): Promise<{ recipientCount: number }> {
-    if (!this.isConfigured) return { recipientCount: 0 };
+    if (!this.isConfigured) {
+      event('warn', 'firebase.send_all_skipped', {
+        reason:
+          'Firebase credentials (FIREBASE_SERVICE_ACCOUNT_KEY or FIREBASE_CLIENT_EMAIL/PRIVATE_KEY) not configured in backend .env',
+      });
+      return { recipientCount: 0 };
+    }
 
     try {
       const records = await this.prisma.userDeviceToken.findMany({
         select: { token: true },
       });
 
-      if (records.length === 0) return { recipientCount: 0 };
+      if (records.length === 0) {
+        event('log', 'firebase.send_all_no_devices', {
+          reason: 'No user device tokens registered in aff.user_device_tokens yet',
+        });
+        return { recipientCount: 0 };
+      }
 
       const tokens = records.map((r) => r.token);
-      const { invalidTokens, successCount } = await this.sendToTokens(tokens, payload);
+      const { invalidTokens, successCount, failureCount } = await this.sendToTokens(
+        tokens,
+        payload,
+      );
+
+      event('log', 'firebase.send_all_completed', {
+        totalTokens: tokens.length,
+        successCount,
+        failureCount,
+      });
 
       if (invalidTokens.length > 0) {
         await this.prisma.userDeviceToken.deleteMany({
