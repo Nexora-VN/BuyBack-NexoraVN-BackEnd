@@ -29,3 +29,8 @@ lerna-debug.log*
 *.tsbuildinfo
 /src/generated/prisma
 .DS_Store
+
+# Firebase Service Account Credentials
+*firebase-adminsdk*.json
+firebase-service-account.json
+

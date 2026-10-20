@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { FinanceRepository } from '../finance/finance.repository.js';
 import { FirebaseMessagingService } from '../../infrastructure/firebase/firebase-messaging.service.js';
+import { event, safeError } from '../../common/observability/observability.js';
 
 const listQuery = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1),
@@ -170,9 +171,13 @@ export class NotificationsService {
         data: { type: 'ADMIN_ANNOUNCEMENT' },
       };
       if (data.target === 'ALL') {
-        void this.firebaseMessaging.sendToAllUsers(payload).catch(() => {});
+        void this.firebaseMessaging.sendToAllUsers(payload).catch((err) => {
+          event('error', 'firebase.admin_broadcast_failed', { err: safeError(err) });
+        });
       } else if (data.target === 'USER') {
-        void this.firebaseMessaging.sendToUsers([data.userId], payload).catch(() => {});
+        void this.firebaseMessaging.sendToUsers([data.userId], payload).catch((err) => {
+          event('error', 'firebase.admin_direct_failed', { err: safeError(err) });
+        });
       }
     }
 
