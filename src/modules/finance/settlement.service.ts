@@ -6,7 +6,9 @@ import {
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -15,13 +17,19 @@ import { FinanceRepository, audit, type Tx } from './finance.repository.js';
 import { WalletService } from './wallet.service.js';
 import { allocateNet, splitCashback } from './domain/money.js';
 import { settlementInput } from './finance.contract.js';
+import { notify } from '../notifications/notification-events.js';
+import { RegistrationMailService } from '../auth/services/registration-mail.service.js';
+import { renderCashbackCreditedEmail } from './templates/cashback-credited-email.template.js';
 
 @Injectable()
 export class SettlementService {
+  private readonly logger = new Logger(SettlementService.name);
+
   constructor(
     private readonly repo: FinanceRepository,
     private readonly wallets: WalletService,
     private readonly config: ConfigService,
+    @Optional() private readonly mail?: RegistrationMailService,
   ) {}
   create(input: z.infer<typeof settlementInput>, actor: string) {
     const gross = BigInt(input.grossVnd),
@@ -72,16 +80,28 @@ export class SettlementService {
       }),
     );
   }
-  confirm(id: string, actor: string) {
+  async confirm(id: string, actor: string) {
     if (!this.config.get<boolean>('SETTLEMENT_ENABLED'))
       throw new ServiceUnavailableException('SETTLEMENT_DISABLED');
-    return step('settlement.transaction', () =>
+    const userCredits = new Map<
+      string,
+      { email: string; name?: string | null; totalAmount: bigint; count: number }
+    >();
+    const result = await step('settlement.transaction', () =>
       this.repo.transaction(async (tx) => {
         const batch = await tx.settlementBatch.findUnique({
           where: { id },
           include: {
             items: {
-              include: { commission: { include: { cashback: true, checkout: true } } },
+              include: {
+                commission: {
+                  include: {
+                    cashback: true,
+                    checkout: true,
+                    user: { select: { email: true, displayName: true, fullName: true } },
+                  },
+                },
+              },
               orderBy: { commissionId: 'asc' },
             },
           },
@@ -121,6 +141,28 @@ export class SettlementService {
             reference: c.id,
             actorId: actor,
           });
+          await notify(tx, {
+            userId: c.userId,
+            eventKey: `commission:${c.id}:paid`,
+            type: 'CASHBACK_CREDITED',
+            title: 'Hoàn tiền đã vào ví',
+            body: 'Hoa hồng của đơn hàng đã được xác nhận và cộng vào số dư khả dụng.',
+            href: '/app/wallet',
+          });
+          if (c.user?.email && split.user > 0n) {
+            const existing = userCredits.get(c.userId);
+            if (existing) {
+              existing.totalAmount += split.user;
+              existing.count += 1;
+            } else {
+              userCredits.set(c.userId, {
+                email: c.user.email,
+                name: c.user.displayName || c.user.fullName,
+                totalAmount: split.user,
+                count: 1,
+              });
+            }
+          }
         }
         await tx.settlementBatch.update({
           where: { id },
@@ -130,6 +172,28 @@ export class SettlementService {
         return { id, status: 'CONFIRMED' };
       }),
     );
+
+    if (this.mail?.isConfigured()) {
+      for (const credit of userCredits.values()) {
+        this.mail
+          .sendMail(
+            credit.email,
+            renderCashbackCreditedEmail({
+              userName: credit.name,
+              amount: credit.totalAmount,
+              orderCount: credit.count,
+              creditedAt: new Date(),
+            }),
+          )
+          .catch((err: unknown) => {
+            this.logger.warn(
+              `Failed to send cashback email to ${credit.email}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+      }
+    }
+
+    return result;
   }
   private async checkProvider(
     tx: Tx,

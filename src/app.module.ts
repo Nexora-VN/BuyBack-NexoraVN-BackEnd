@@ -15,6 +15,7 @@ import { AffiliateModule } from './modules/affiliate/affiliate.module.js';
 import { ProductModule } from './modules/product/product.module.js';
 import { FinanceModule } from './modules/finance/finance.module.js';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module.js';
+import { NotificationsModule } from './modules/notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
     ProductModule,
     FinanceModule,
     ReconciliationModule,
+    NotificationsModule,
   ],
   providers: [
     {

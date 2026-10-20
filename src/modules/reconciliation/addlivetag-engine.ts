@@ -6,6 +6,7 @@ import { FinanceRepository, audit, json, type Tx } from '../finance/finance.repo
 import { WalletService } from '../finance/wallet.service.js';
 import { parseAttribution, splitCashback } from '../finance/domain/money.js';
 import { providerScope, type ConversionItem, type reviewInput } from './addlivetag.contract.js';
+import { notify, notifyAdmins } from '../notifications/notification-events.js';
 
 export function checkoutDigest(rows: ConversionItem[]) {
   return (
@@ -74,6 +75,7 @@ export class AddLiveTagEngine {
     });
     if (credential.version !== batch.credentialVersion || credential.accountId !== batch.accountId)
       throw new ConflictException('CREDENTIAL_CHANGED');
+    let newIssueCount = 0;
     for (const [externalId, rows] of groups) {
       const { conversion, issues, amount } = inspectCheckout(rows);
       const provider = providerScope(batch.accountId),
@@ -212,6 +214,29 @@ export class AddLiveTagEngine {
             estimatedVnd: amount,
           },
         });
+        if (userId && (previous?.state !== state || previous?.userId !== userId))
+          await notify(tx, {
+            userId,
+            eventKey: `commission:${c.id}:revision:${checkout.revision}:${state}`,
+            type: `COMMISSION_${state}`,
+            title:
+              state === 'ESTIMATED'
+                ? 'Đơn hàng đã được ghi nhận'
+                : state === 'VALIDATED'
+                  ? 'Đơn hàng đã được xác nhận'
+                  : state === 'REJECTED'
+                    ? 'Đơn hàng không đủ điều kiện hoàn tiền'
+                    : 'Đơn hàng cần kiểm tra thêm',
+            body:
+              state === 'ESTIMATED'
+                ? 'Đơn hàng đang chờ đối soát hoa hồng.'
+                : state === 'VALIDATED'
+                  ? 'Hoa hồng đang chờ ghi vào ví.'
+                  : state === 'REJECTED'
+                    ? 'Đơn hàng này không đủ điều kiện nhận hoàn tiền.'
+                    : 'Đơn hàng đang được kiểm tra trước khi xác nhận hoa hồng.',
+            href: '/app/orders',
+          });
         if (userId)
           await this.cashback(
             tx,
@@ -240,12 +265,23 @@ export class AddLiveTagEngine {
           data: { state: 'REVERSED' },
         });
         await audit(tx, null, 'COMMISSION_REVERSED', previous.id);
+        if (previous.userId)
+          await notify(tx, {
+            userId: previous.userId,
+            eventKey: `commission:${previous.id}:reversed`,
+            type: 'CASHBACK_REVERSED',
+            title: 'Đơn hàng đã bị hủy hoặc hoàn trả',
+            body: previous.cashback
+              ? 'Khoản hoàn tiền đã được điều chỉnh trong ví.'
+              : 'Khoản hoa hồng của đơn hàng không còn đủ điều kiện.',
+            href: '/app/wallet',
+          });
       }
       for (const type of issues) {
         const open = await tx.reconciliationIssue.findFirst({
           where: { provider, checkoutId: externalId, type, sourceHash, status: 'OPEN' },
         });
-        if (!open)
+        if (!open) {
           await tx.reconciliationIssue.create({
             data: {
               batchId: batch.id,
@@ -257,8 +293,18 @@ export class AddLiveTagEngine {
               payload: json({ checkoutId: checkout.id, revision: checkout.revision }),
             },
           });
+          newIssueCount++;
+        }
       }
     }
+    if (newIssueCount)
+      await notifyAdmins(tx, {
+        eventKey: `batch:${batch.id}:issues`,
+        type: 'RECONCILIATION_ISSUE',
+        title: 'Có vấn đề đối soát mới',
+        body: `${newIssueCount} vấn đề mới cần kiểm tra trong đợt đối soát.`,
+        href: '/admin/reconciliation/issues',
+      });
   }
   private async cashback(
     tx: Tx,

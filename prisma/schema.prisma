@@ -62,6 +62,9 @@ model User {
   wallet                  Wallet?
   commissions             Commission[]
   withdrawals             Withdrawal[]
+  notifications           Notification[]
+  notificationSends       NotificationSend[]
+  deviceTokens            UserDeviceToken[]
 
   @@index([status])
   @@index([createdAt])
@@ -725,5 +728,60 @@ model AuditLog {
 
   @@index([createdAt])
   @@map("audit_logs")
+  @@schema("aff")
+}
+
+model NotificationSend {
+  id             String         @id @default(uuid()) @db.Uuid
+  senderId       String         @map("sender_id") @db.Uuid
+  idempotencyKey String         @map("idempotency_key") @db.VarChar(150)
+  target         String
+  targetUserId   String?        @map("target_user_id") @db.Uuid
+  title          String         @db.VarChar(160)
+  body           String         @db.VarChar(1000)
+  recipientCount Int            @default(0) @map("recipient_count")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  sender         User           @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  notifications  Notification[]
+
+  @@index([createdAt])
+  @@unique([senderId, idempotencyKey])
+  @@map("notification_sends")
+  @@schema("aff")
+}
+
+model Notification {
+  id        String            @id @default(uuid()) @db.Uuid
+  userId    String            @map("user_id") @db.Uuid
+  eventKey  String            @map("event_key") @db.VarChar(255)
+  type      String            @db.VarChar(80)
+  title     String            @db.VarChar(160)
+  body      String            @db.VarChar(1000)
+  href      String            @db.VarChar(300)
+  sendId    String?           @map("send_id") @db.Uuid
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  readAt    DateTime?         @map("read_at") @db.Timestamptz(3)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  send      NotificationSend? @relation(fields: [sendId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, eventKey])
+  @@index([userId, createdAt])
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+  @@schema("aff")
+}
+
+model UserDeviceToken {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  token      String   @unique @db.VarChar(512)
+  deviceType String   @default("web") @map("device_type") @db.VarChar(50)
+  userAgent  String?  @map("user_agent") @db.VarChar(512)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_device_tokens")
   @@schema("aff")
 }

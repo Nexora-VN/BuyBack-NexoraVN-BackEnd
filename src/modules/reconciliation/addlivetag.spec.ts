@@ -269,6 +269,8 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
 
   beforeEach(() => {
     mockTx = {
+      user: { findMany: jest.fn().mockResolvedValue([]) },
+      notification: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       providerCredential: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'ADDLIVETAG',
@@ -493,6 +495,25 @@ describe('AddLiveTagEngine & Reconciliation Business Logic', () => {
       }),
     );
     expect(mockWallet.post).not.toHaveBeenCalled();
+  });
+
+  it('groups multiple new reconciliation issues into one admin alert per batch', async () => {
+    mockTx.user.findMany.mockResolvedValue([{ id: 'admin-1' }]);
+    const groups = new Map([
+      ['checkout-a', [makeRow({ checkout_id: 'checkout-a', utm: '----', sub_id1: '' })]],
+      ['checkout-b', [makeRow({ checkout_id: 'checkout-b', utm: '----', sub_id1: '' })]],
+    ]);
+    await engine.publish(
+      mockTx as unknown as Tx,
+      { id: 'batch-1', accountId, expectedAffiliate, credentialVersion: 1 },
+      groups,
+    );
+    expect(mockTx.reconciliationIssue.create).toHaveBeenCalledTimes(2);
+    expect(mockTx.notification.createMany).toHaveBeenCalledTimes(1);
+    expect(mockTx.notification.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ userId: 'admin-1', eventKey: 'batch:batch-1:issues' })],
+      skipDuplicates: true,
+    });
   });
 
   it('marks cancelled rows as REJECTED even when commission_status is "Chờ trả hoa hồng"', async () => {
@@ -917,6 +938,7 @@ describe('SettlementService & AddLiveTag Integration', () => {
 
   beforeEach(() => {
     mockTx = {
+      notification: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       providerCredential: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'ADDLIVETAG',
