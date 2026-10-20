@@ -48,6 +48,11 @@ export class FinanceUserController {
     return this.queries.list('withdrawals', validate(listInput, query), actor.id);
   }
 
+  @Get('withdrawals/:id')
+  withdrawal(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.queries.withdrawal(id, actor.id);
+  }
+
   @Get('bank-accounts')
   list3(@Query() query: unknown, @CurrentUser() actor: AuthenticatedUser) {
     return this.queries.list('bank-accounts', validate(listInput, query), actor.id);

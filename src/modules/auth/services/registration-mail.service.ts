@@ -30,10 +30,13 @@ class SmtpConnection {
     let response = '';
     for (let count = 0; count < 30; count++) {
       const next = await this.lines.next();
-      if (next.done) throw new Error('SMTP connection closed');
+      if (next.done) throw new Error(`SMTP connection closed. Last response: ${response.trim()}`);
       response += `${next.value}\n`;
       if (/^\d{3} /.test(next.value)) {
-        if (Number(next.value.slice(0, 3)) !== expected) throw new Error('SMTP rejected command');
+        const code = Number(next.value.slice(0, 3));
+        if (code !== expected) {
+          throw new Error(`SMTP rejected command (expected ${expected}, got ${code}): ${response.trim()}`);
+        }
         return response;
       }
     }
@@ -82,6 +85,13 @@ export class RegistrationMailService {
     return this.send(to, renderPasswordResetEmail(code));
   }
 
+  async sendMail(
+    to: string,
+    template: { subject: string; text: string; html: string },
+  ): Promise<void> {
+    return this.send(to, template);
+  }
+
   private async send(
     to: string,
     template: { subject: string; text: string; html: string },
@@ -89,30 +99,41 @@ export class RegistrationMailService {
     if (!this.isConfigured())
       throw new ServiceUnavailableException('REGISTRATION_MAIL_NOT_CONFIGURED');
     const host = this.config.getOrThrow<string>('SMTP_HOST');
-    const port = this.config.getOrThrow<number>('SMTP_PORT');
+    const port = Number(this.config.getOrThrow<number | string>('SMTP_PORT'));
     const user = this.config.getOrThrow<string>('SMTP_USER');
-    const password = this.config.getOrThrow<string>('SMTP_PASS');
+    const password = this.config.getOrThrow<string>('SMTP_PASS').replace(/\s+/g, '');
     const from = this.config.getOrThrow<string>('SMTP_FROM');
-    const socket =
-      port === 465
-        ? connectTls({ host, port, servername: host, rejectUnauthorized: true })
-        : connect({ host, port });
+    const isImplicitTls = port === 465;
+    const socket = isImplicitTls
+      ? connectTls({ host, port, servername: host, rejectUnauthorized: true })
+      : connect({ host, port });
     socket.setTimeout(15_000, () => socket.destroy(new Error('SMTP timeout')));
-    const smtp = new SmtpConnection(socket);
+    let smtp: SmtpConnection | null = null;
     try {
-      await once(socket, port === 465 ? 'secureConnect' : 'connect');
+      await once(socket, isImplicitTls ? 'secureConnect' : 'connect');
+      smtp = new SmtpConnection(socket);
       await smtp.read(220);
       const greeting = await smtp.command('EHLO piggyback.local', 250);
-      if (port !== 465) {
+      if (!isImplicitTls) {
         if (!greeting.includes('STARTTLS')) throw new Error('SMTP STARTTLS is required');
         await smtp.command('STARTTLS', 220);
         await smtp.startTls(host);
         await smtp.command('EHLO piggyback.local', 250);
       }
-      await smtp.command(
-        `AUTH PLAIN ${Buffer.from(`\0${user}\0${password}`).toString('base64')}`,
-        235,
-      );
+      try {
+        await smtp.command(
+          `AUTH PLAIN ${Buffer.from(`\0${user}\0${password}`).toString('base64')}`,
+          235,
+        );
+      } catch (authErr) {
+        try {
+          await smtp.command('AUTH LOGIN', 334);
+          await smtp.command(Buffer.from(user).toString('base64'), 334);
+          await smtp.command(Buffer.from(password).toString('base64'), 235);
+        } catch {
+          throw authErr;
+        }
+      }
       await smtp.command(`MAIL FROM:<${from}>`, 250);
       await smtp.command(`RCPT TO:<${to}>`, 250);
       await smtp.command('DATA', 354);
@@ -138,10 +159,14 @@ export class RegistrationMailService {
       ].join('\r\n');
       await smtp.command(`${message}\r\n.`, 250);
       await smtp.command('QUIT', 221);
-    } catch {
-      throw new ServiceUnavailableException('REGISTRATION_MAIL_SEND_FAILED');
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new ServiceUnavailableException(`REGISTRATION_MAIL_SEND_FAILED: ${detail}`, {
+        cause: err,
+      });
     } finally {
-      smtp.close();
+      smtp?.close();
+      socket.destroy();
     }
   }
 }

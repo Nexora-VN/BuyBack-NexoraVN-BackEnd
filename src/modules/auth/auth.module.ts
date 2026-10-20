@@ -29,6 +29,6 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
       useExisting: PrismaAuthRepository,
     },
   ],
-  exports: [JwtAuthGuard, RolesGuard],
+  exports: [JwtAuthGuard, RolesGuard, RegistrationMailService],
 })
 export class AuthModule {}

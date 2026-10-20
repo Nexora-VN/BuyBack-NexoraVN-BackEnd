@@ -30,6 +30,8 @@ describe('Configured withdrawal minimum', () => {
     },
     withdrawalStatusHistory: { create: jest.fn() },
     auditLog: { create: jest.fn() },
+    user: { findMany: jest.fn().mockResolvedValue([]) },
+    notification: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
   };
   const repo = {
     db: { affiliatePolicy: tx.affiliatePolicy },

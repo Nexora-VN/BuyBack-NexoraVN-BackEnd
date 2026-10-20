@@ -16,6 +16,10 @@ export const environmentSchema = z
     SMTP_PASS: z.string().min(1).optional(),
     SMTP_FROM: z.email().optional(),
     REGISTRATION_OTP_SECRET: z.string().min(32).optional(),
+    FIREBASE_PROJECT_ID: z.string().trim().min(1).optional(),
+    FIREBASE_CLIENT_EMAIL: z.string().trim().min(1).optional(),
+    FIREBASE_PRIVATE_KEY: z.string().trim().min(1).optional(),
+    FIREBASE_SERVICE_ACCOUNT_KEY: z.string().trim().min(1).optional(),
     SHOPEE_AFFILIATE_ID: z.string().regex(/^\d+$/).optional(),
     ADDLIVETAG_API_KEY: z.preprocess(
       (v) => (v === '' ? undefined : v),

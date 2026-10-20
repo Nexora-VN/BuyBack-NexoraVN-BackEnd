@@ -9,6 +9,7 @@ import { ProviderError } from './provider-error.js';
 import { AddLiveTagClient } from './addlivetag.client.js';
 import { AddLiveTagEngine } from './addlivetag-engine.js';
 import { splitDateRange, type ConversionItem } from './addlivetag.contract.js';
+import { notifyAdmins } from '../notifications/notification-events.js';
 
 function vietnamDate(offset: number) {
   return new Date(Date.now() + 7 * 3600000 - offset * 86400000).toISOString().slice(0, 10);
@@ -133,10 +134,22 @@ export class ReconciliationService {
           create: { id: key, owner: this.owner, expiresAt: new Date(Date.now() + 300000) },
           update: { owner: this.owner, expiresAt: new Date(Date.now() + 300000) },
         });
+        const expired = await tx.reconciliationBatch.findMany({
+          where: { provider: 'ADDLIVETAG', accountId: batch.accountId, status: 'RUNNING' },
+          select: { id: true },
+        });
         await tx.reconciliationBatch.updateMany({
           where: { provider: 'ADDLIVETAG', accountId: batch.accountId, status: 'RUNNING' },
           data: { status: 'FAILED', errorCode: 'WORKER_LEASE_EXPIRED', completedAt: new Date() },
         });
+        for (const row of expired)
+          await notifyAdmins(tx, {
+            eventKey: `batch:${row.id}:failed`,
+            type: 'RECONCILIATION_FAILED',
+            title: 'Đợt đối soát thất bại',
+            body: 'Một đợt đối soát không hoàn tất và cần kiểm tra.',
+            href: `/admin/reconciliation/${row.id}`,
+          });
         return true;
       });
       if (!leased) return;
@@ -308,9 +321,19 @@ export class ReconciliationService {
       const code = error instanceof ProviderError ? error.code : 'RECONCILIATION_FAILED';
       if (code === 'PROVIDER_AUTH_EXPIRED' && version !== undefined)
         await this.credentials.mark(version, 'EXPIRED');
-      await this.repo.db.reconciliationBatch.update({
-        where: { id },
-        data: { status: 'FAILED', failedRecords: 1, errorCode: code, completedAt: new Date() },
+      await this.repo.transaction(async (tx) => {
+        const changed = await tx.reconciliationBatch.updateMany({
+          where: { id, status: { not: 'FAILED' } },
+          data: { status: 'FAILED', failedRecords: 1, errorCode: code, completedAt: new Date() },
+        });
+        if (changed.count)
+          await notifyAdmins(tx, {
+            eventKey: `batch:${id}:failed`,
+            type: 'RECONCILIATION_FAILED',
+            title: 'Đợt đối soát thất bại',
+            body: 'Một đợt đối soát không hoàn tất và cần kiểm tra.',
+            href: `/admin/reconciliation/${id}`,
+          });
       });
       this.logger.error({
         event: 'reconciliation.batch.failed',

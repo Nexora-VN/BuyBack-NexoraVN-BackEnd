@@ -1,7 +1,9 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -10,14 +12,21 @@ import { FinanceRepository, audit, json } from './finance.repository.js';
 import { WalletService } from './wallet.service.js';
 import { FinanceCrypto } from './crypto.service.js';
 import { adjustmentInput, withdrawalInput, withdrawalStatusInput } from './finance.contract.js';
+import { notify, notifyAdmins } from '../notifications/notification-events.js';
+import { RegistrationMailService } from '../auth/services/registration-mail.service.js';
+import { renderWithdrawalCompletedEmail } from './templates/withdrawal-completed-email.template.js';
+import { renderCashbackCreditedEmail } from './templates/cashback-credited-email.template.js';
 
 @Injectable()
 export class WithdrawalService {
+  private readonly logger = new Logger(WithdrawalService.name);
+
   constructor(
     private readonly repo: FinanceRepository,
     private readonly wallets: WalletService,
     private readonly crypto: FinanceCrypto,
     private readonly config: ConfigService,
+    @Optional() private readonly mail?: RegistrationMailService,
   ) {}
   create(userId: string, input: z.infer<typeof withdrawalInput>) {
     if (!this.config.get<boolean>('WITHDRAWALS_ENABLED'))
@@ -80,14 +89,24 @@ export class WithdrawalService {
         },
       });
       await audit(tx, userId, 'WITHDRAWAL_CREATED', withdrawal.id, { amount });
+      await notifyAdmins(tx, {
+        eventKey: `withdrawal:${withdrawal.id}:created`,
+        type: 'WITHDRAWAL_CREATED',
+        title: 'Yêu cầu rút tiền mới',
+        body: 'Có yêu cầu rút tiền đang chờ xử lý.',
+        href: '/admin/withdrawals',
+      });
       return { id: withdrawal.id, status: withdrawal.status, amount };
     });
   }
-  transition(id: string, actor: string, input: z.infer<typeof withdrawalStatusInput>) {
-    return this.repo.transaction(async (tx) => {
-      const row = await tx.withdrawal.findUnique({ where: { id } });
+  async transition(id: string, actor: string, input: z.infer<typeof withdrawalStatusInput>) {
+    const result = await this.repo.transaction(async (tx) => {
+      const row = await tx.withdrawal.findUnique({
+        where: { id },
+        include: { user: { select: { email: true, displayName: true, fullName: true } } },
+      });
       if (!row) throw new NotFoundException('WITHDRAWAL_NOT_FOUND');
-      if (row.status === input.status) return { id, status: row.status };
+      if (row.status === input.status) return { id, status: row.status, emailPayload: null };
       const allowed =
         row.status === 'PENDING'
           ? ['PROCESSING', 'REJECTED']
@@ -125,8 +144,78 @@ export class WithdrawalService {
         reason: input.reason,
         transferReference: input.transferReference ?? null,
       });
-      return { id, status: input.status };
+      const statusCopy = {
+        PROCESSING: ['Yêu cầu đang được xử lý', 'Yêu cầu rút tiền của bạn đang được chuyển khoản.'],
+        COMPLETED: ['Đã chuyển tiền', 'Yêu cầu rút tiền của bạn đã hoàn tất.'],
+        REJECTED: [
+          'Yêu cầu rút tiền chưa được chấp nhận',
+          'Vui lòng kiểm tra thông tin và thử lại.',
+        ],
+        FAILED: ['Chuyển tiền chưa thành công', 'Số tiền đã được hoàn lại vào số dư khả dụng.'],
+      }[input.status];
+      await notify(tx, {
+        userId: row.userId,
+        eventKey: `withdrawal:${id}:${input.status}`,
+        type: `WITHDRAWAL_${input.status}`,
+        title: statusCopy[0]!,
+        body: statusCopy[1]!,
+        href: `/app/withdrawals/${id}`,
+      });
+
+      let emailPayload: {
+        email: string;
+        userName?: string | null;
+        amount: bigint;
+        bankName: string;
+        accountHolder: string;
+        lastFour?: string;
+        transferReference?: string | null;
+      } | null = null;
+
+      if (input.status === 'COMPLETED' && row.user?.email) {
+        const s = row.bankSnapshot as {
+          bankCode?: string;
+          bankName?: string;
+          accountHolder?: string;
+          lastFour?: string;
+        } | null;
+        emailPayload = {
+          email: row.user.email,
+          userName: row.user.displayName || row.user.fullName,
+          amount: row.amount,
+          bankName: s?.bankName || s?.bankCode || 'Ngân hàng',
+          accountHolder: s?.accountHolder || row.user.displayName || 'Khách hàng',
+          lastFour: s?.lastFour,
+          transferReference: input.transferReference ?? row.transferReference,
+        };
+      }
+
+      return { id, status: input.status, emailPayload };
     });
+
+    if (result.emailPayload && this.mail?.isConfigured()) {
+      const p = result.emailPayload;
+      this.mail
+        .sendMail(
+          p.email,
+          renderWithdrawalCompletedEmail({
+            userName: p.userName,
+            amount: p.amount,
+            bankName: p.bankName,
+            accountHolder: p.accountHolder,
+            accountNumberMasked: p.lastFour ? `•••• ${p.lastFour}` : undefined,
+            transferReference: p.transferReference,
+            completedAt: new Date(),
+          }),
+        )
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `Failed to send withdrawal completed email to ${p.email}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    }
+
+    return { id: result.id, status: result.status };
   }
   async paymentDetails(id: string, actor: string) {
     return this.repo.transaction(async (tx) => {
@@ -151,9 +240,13 @@ export class WithdrawalService {
       };
     });
   }
-  adjust(actor: string, input: z.infer<typeof adjustmentInput>) {
-    return this.repo.transaction(async (tx) => {
-      const result = await this.wallets.post(tx, {
+  async adjust(actor: string, input: z.infer<typeof adjustmentInput>) {
+    const result = await this.repo.transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: input.userId },
+        select: { email: true, displayName: true, fullName: true },
+      });
+      const res = await this.wallets.post(tx, {
         userId: input.userId,
         key: 'adjustment:' + input.idempotencyKey,
         type: 'MANUAL_ADJUSTMENT',
@@ -163,8 +256,49 @@ export class WithdrawalService {
         actorId: actor,
         reason: input.reason,
       });
-      await audit(tx, actor, 'WALLET_ADJUSTED', result.id, { reason: input.reason });
-      return result;
+      await audit(tx, actor, 'WALLET_ADJUSTED', res.id, { reason: input.reason });
+      await notify(tx, {
+        userId: input.userId,
+        eventKey: `wallet:adjustment:${res.id}`,
+        type: 'WALLET_ADJUSTED',
+        title: 'Số dư ví đã được điều chỉnh',
+        body:
+          BigInt(input.amount) > 0n
+            ? 'Số dư khả dụng của bạn đã được cộng thêm.'
+            : 'Số dư khả dụng của bạn đã được điều chỉnh.',
+        href: '/app/wallet',
+      });
+      const emailPayload =
+        user?.email && BigInt(input.amount) > 0n
+          ? {
+              email: user.email,
+              userName: user.displayName || user.fullName,
+              amount: BigInt(input.amount),
+              note: input.reason,
+            }
+          : null;
+      return { res, emailPayload };
     });
+
+    if (result.emailPayload && this.mail?.isConfigured()) {
+      const p = result.emailPayload;
+      this.mail
+        .sendMail(
+          p.email,
+          renderCashbackCreditedEmail({
+            userName: p.userName,
+            amount: p.amount,
+            note: p.note,
+            creditedAt: new Date(),
+          }),
+        )
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `Failed to send adjustment email to ${p.email}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    }
+
+    return result.res;
   }
 }
