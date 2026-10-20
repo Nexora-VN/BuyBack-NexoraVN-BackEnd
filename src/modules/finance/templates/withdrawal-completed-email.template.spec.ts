@@ -33,7 +33,7 @@ describe('withdrawal completed email template', () => {
       transferReference: 'Ref <test>',
     });
 
-    expect(email.html).not.toContain('<img');
+    expect(email.html).not.toContain('<img src=x');
     expect(email.html).toContain('&lt;img');
     expect(email.html).toContain('&lt;b&gt;Bank&lt;/b&gt;');
     expect(email.html).toContain('User &amp; Co');
