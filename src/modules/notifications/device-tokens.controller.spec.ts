@@ -53,9 +53,7 @@ describe('DeviceTokensController', () => {
   });
 
   it('rejects invalid/too short token', async () => {
-    await expect(
-      controller.register(mockUser, { token: 'short' }),
-    ).rejects.toThrow();
+    await expect(controller.register(mockUser, { token: 'short' })).rejects.toThrow();
   });
 
   it('unregisters device token for user', async () => {

@@ -49,10 +49,7 @@ export function renderCashbackCreditedEmail(
   const safeName = data.userName ? escapeHtml(data.userName) : '';
   const safeNote = data.note ? escapeHtml(data.note) : '';
 
-  const orderNote =
-    data.orderCount && data.orderCount > 1
-      ? `từ ${data.orderCount} đơn hàng `
-      : '';
+  const orderNote = data.orderCount && data.orderCount > 1 ? `từ ${data.orderCount} đơn hàng ` : '';
 
   const textLines = [
     'Piggy Back',

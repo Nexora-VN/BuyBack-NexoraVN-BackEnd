@@ -1,7 +1,4 @@
-import {
-  formatVnd,
-  renderCashbackCreditedEmail,
-} from './cashback-credited-email.template.js';
+import { formatVnd, renderCashbackCreditedEmail } from './cashback-credited-email.template.js';
 
 describe('cashback credited email template', () => {
   it('formats currency correctly in VND', () => {

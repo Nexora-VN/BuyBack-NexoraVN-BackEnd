@@ -48,8 +48,7 @@ export class FirebaseMessagingService implements OnModuleInit {
       const serviceAccountKey = this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT_KEY');
       const clientEmail = this.configService.get<string>('FIREBASE_CLIENT_EMAIL');
       const privateKey = this.configService.get<string>('FIREBASE_PRIVATE_KEY');
-      const projectId =
-        this.configService.get<string>('FIREBASE_PROJECT_ID') || 'piggyback-7b0d9';
+      const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID') || 'piggyback-7b0d9';
 
       let credential = null;
 
@@ -81,7 +80,8 @@ export class FirebaseMessagingService implements OnModuleInit {
       } else {
         this.isConfigured = false;
         event('log', 'firebase.disabled', {
-          reason: 'No credentials configured (FIREBASE_SERVICE_ACCOUNT_KEY or FIREBASE_CLIENT_EMAIL/PRIVATE_KEY)',
+          reason:
+            'No credentials configured (FIREBASE_SERVICE_ACCOUNT_KEY or FIREBASE_CLIENT_EMAIL/PRIVATE_KEY)',
         });
       }
     } catch (error) {
