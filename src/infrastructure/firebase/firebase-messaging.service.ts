@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import fs from 'node:fs';
+import path from 'node:path';
 import { initializeApp, cert, getApps, type ServiceAccount, type App } from 'firebase-admin/app';
 import { getMessaging, type MulticastMessage, type SendResponse } from 'firebase-admin/messaging';
 import { PrismaService } from '../database/prisma/prisma.service.js';
@@ -51,6 +52,7 @@ export class FirebaseMessagingService implements OnModuleInit {
       const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID') || 'piggyback-7b0d9';
 
       let credential = null;
+      let effectiveProjectId = projectId;
 
       if (serviceAccountKey) {
         let parsed: ServiceAccount;
@@ -61,6 +63,9 @@ export class FirebaseMessagingService implements OnModuleInit {
         } else {
           parsed = JSON.parse(serviceAccountKey) as ServiceAccount;
         }
+        if ((parsed as { project_id?: string }).project_id) {
+          effectiveProjectId = (parsed as { project_id: string }).project_id;
+        }
         credential = cert(parsed);
       } else if (clientEmail && privateKey) {
         credential = cert({
@@ -68,15 +73,43 @@ export class FirebaseMessagingService implements OnModuleInit {
           clientEmail,
           privateKey: privateKey.replace(/\\n/g, '\n'),
         });
+      } else if (process.env.NODE_ENV !== 'test') {
+        const searchDirs = [
+          path.resolve(process.cwd(), 'src/infrastructure/firebase'),
+          path.resolve(process.cwd()),
+        ];
+        for (const dir of searchDirs) {
+          if (!fs.existsSync(dir)) continue;
+          try {
+            const files = fs.readdirSync(dir);
+            const keyFile = files.find(
+              (f) =>
+                (f.includes('firebase-adminsdk') || f.includes('firebase-service-account')) &&
+                f.endsWith('.json'),
+            );
+            if (keyFile) {
+              const fullPath = path.join(dir, keyFile);
+              const parsed = JSON.parse(fs.readFileSync(fullPath, 'utf8')) as ServiceAccount;
+              if ((parsed as { project_id?: string }).project_id) {
+                effectiveProjectId = (parsed as { project_id: string }).project_id;
+              }
+              credential = cert(parsed);
+              event('log', 'firebase.loaded_from_local_file', { file: keyFile });
+              break;
+            }
+          } catch (e) {
+            event('warn', 'firebase.local_file_read_error', { err: safeError(e) });
+          }
+        }
       }
 
       if (credential) {
         this.firebaseApp = initializeApp({
           credential,
-          projectId,
+          projectId: effectiveProjectId,
         });
         this.isConfigured = true;
-        event('log', 'firebase.initialized', { projectId });
+        event('log', 'firebase.initialized', { projectId: effectiveProjectId });
       } else {
         this.isConfigured = false;
         event('log', 'firebase.disabled', {
