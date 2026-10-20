@@ -10,11 +10,7 @@ import { FirebaseMessagingService } from '../../infrastructure/firebase/firebase
 
 @Module({
   imports: [FinanceModule],
-  controllers: [
-    NotificationsController,
-    AdminNotificationSendsController,
-    DeviceTokensController,
-  ],
+  controllers: [NotificationsController, AdminNotificationSendsController, DeviceTokensController],
   providers: [NotificationsService, FirebaseMessagingService],
   exports: [NotificationsService, FirebaseMessagingService],
 })

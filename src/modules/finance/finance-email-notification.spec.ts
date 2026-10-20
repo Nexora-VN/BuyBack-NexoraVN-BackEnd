@@ -59,7 +59,10 @@ describe('Finance email notifications', () => {
         },
         commission: { update: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
         cashbackAllocation: { update: jest.fn() },
-        reconciliationIssue: { findFirst: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0) },
+        reconciliationIssue: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          count: jest.fn().mockResolvedValue(0),
+        },
         notification: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
         auditLog: { create: jest.fn() },
       };
@@ -68,7 +71,9 @@ describe('Finance email notifications', () => {
         transaction: jest.fn(async (op: (t: typeof tx) => Promise<unknown>) => op(tx)),
       } as unknown as FinanceRepository;
 
-      const wallets = { post: jest.fn().mockResolvedValue({ id: 'w-1' }) } as unknown as WalletService;
+      const wallets = {
+        post: jest.fn().mockResolvedValue({ id: 'w-1' }),
+      } as unknown as WalletService;
       const config = {
         get: jest.fn((key: string) => (key === 'SETTLEMENT_ENABLED' ? true : undefined)),
       } as unknown as ConfigService;
@@ -129,7 +134,9 @@ describe('Finance email notifications', () => {
         transaction: jest.fn(async (op: (t: typeof tx) => Promise<unknown>) => op(tx)),
       } as unknown as FinanceRepository;
 
-      const wallets = { post: jest.fn().mockResolvedValue({ id: 'w-1' }) } as unknown as WalletService;
+      const wallets = {
+        post: jest.fn().mockResolvedValue({ id: 'w-1' }),
+      } as unknown as WalletService;
       const config = { get: jest.fn().mockReturnValue(true) } as unknown as ConfigService;
       const crypto = {} as FinanceCrypto;
 
@@ -163,7 +170,12 @@ describe('Finance email notifications', () => {
         userId: 'user-1',
         amount: 100000n,
         status: 'PENDING',
-        bankSnapshot: { bankCode: 'MBB', bankName: 'MB Bank', accountHolder: 'USER', lastFour: '1234' },
+        bankSnapshot: {
+          bankCode: 'MBB',
+          bankName: 'MB Bank',
+          accountHolder: 'USER',
+          lastFour: '1234',
+        },
         user: { email: 'user1@example.com' },
       };
 

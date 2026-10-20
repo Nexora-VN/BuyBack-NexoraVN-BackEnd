@@ -35,7 +35,9 @@ class SmtpConnection {
       if (/^\d{3} /.test(next.value)) {
         const code = Number(next.value.slice(0, 3));
         if (code !== expected) {
-          throw new Error(`SMTP rejected command (expected ${expected}, got ${code}): ${response.trim()}`);
+          throw new Error(
+            `SMTP rejected command (expected ${expected}, got ${code}): ${response.trim()}`,
+          );
         }
         return response;
       }
