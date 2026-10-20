@@ -34,3 +34,5 @@ lerna-debug.log*
 *firebase-adminsdk*.json
 firebase-service-account.json
 
+# Local test scripts
+test-*.mjs
