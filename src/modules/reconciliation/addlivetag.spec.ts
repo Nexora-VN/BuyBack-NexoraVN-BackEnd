@@ -123,14 +123,17 @@ describe('Date Range Splitting', () => {
 });
 
 describe('AddLiveTag commission summary validation', () => {
-  it('accepts matching totals and the observed one-VND item rounding difference', () => {
+  it('accepts differences strictly below 100 VND in either direction', () => {
     expect(validateCommissionSummary(84905n, '84905')).toBe(0n);
     expect(validateCommissionSummary(84906n, '84905')).toBe(1n);
+    expect(validateCommissionSummary(145027n, '145024')).toBe(3n);
+    expect(validateCommissionSummary(85004n, '84905')).toBe(99n);
+    expect(validateCommissionSummary(84806n, '84905')).toBe(-99n);
   });
 
-  it('rejects larger differences and summaries above the item total', () => {
-    expect(() => validateCommissionSummary(84907n, '84905')).toThrow('SUMMARY_COMMISSION_MISMATCH');
-    expect(() => validateCommissionSummary(84904n, '84905')).toThrow('SUMMARY_COMMISSION_MISMATCH');
+  it('rejects a difference of 100 VND or more in either direction', () => {
+    expect(() => validateCommissionSummary(85005n, '84905')).toThrow('SUMMARY_COMMISSION_MISMATCH');
+    expect(() => validateCommissionSummary(84805n, '84905')).toThrow('SUMMARY_COMMISSION_MISMATCH');
   });
 });
 

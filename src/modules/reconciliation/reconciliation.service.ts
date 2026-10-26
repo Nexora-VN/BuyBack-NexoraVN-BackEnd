@@ -15,11 +15,13 @@ function vietnamDate(offset: number) {
   return new Date(Date.now() + 7 * 3600000 - offset * 86400000).toISOString().slice(0, 10);
 }
 
+const MAX_SUMMARY_DIFFERENCE_VND = 99n;
+
 export function validateCommissionSummary(itemTotal: bigint, reportedTotal: string): bigint {
   const difference = itemTotal - BigInt(reportedTotal);
-  // AddLiveTag can round the report summary one VND below its item-level amounts.
-  // Keep rejecting every other discrepancy rather than publishing an incomplete report.
-  if (difference !== 0n && difference !== 1n)
+  // Accept the explicit operational threshold without altering any item amounts.
+  // Pagination and item validation remain separate checks.
+  if (difference < -MAX_SUMMARY_DIFFERENCE_VND || difference > MAX_SUMMARY_DIFFERENCE_VND)
     throw new ProviderError('SUMMARY_COMMISSION_MISMATCH');
   return difference;
 }
@@ -210,6 +212,7 @@ export class ReconciliationService {
       let total: number | undefined,
         summary: string | undefined,
         summaryDetails: Record<string, unknown> = {},
+        acceptedDifference = 0n,
         received = 0,
         commission = 0n;
       for (let page = 1; page <= 10000; page++) {
@@ -274,12 +277,9 @@ export class ReconciliationService {
             ...report.summary,
             item_commission_total: commission.toString(),
             item_summary_difference_vnd: difference.toString(),
+            summary_difference_limit_vnd: MAX_SUMMARY_DIFFERENCE_VND.toString(),
           };
-          if (difference !== 0n)
-            event('warn', 'reconciliation.summary.rounding_difference', {
-              batchId: id,
-              differenceVnd: difference.toString(),
-            });
+          acceptedDifference = difference;
           break;
         }
         if (!report.data.length || page === 10000) throw new ProviderError('INCOMPLETE_PAGINATION');
@@ -310,6 +310,14 @@ export class ReconciliationService {
           },
         });
       });
+      if (acceptedDifference !== 0n)
+        event('warn', 'reconciliation.summary.rounding_difference', {
+          batchId: id,
+          differenceVnd: acceptedDifference.toString(),
+          allowedAbsoluteDifferenceVnd: MAX_SUMMARY_DIFFERENCE_VND.toString(),
+          itemTotalVnd: commission.toString(),
+          reportedTotalVnd: String(summaryDetails.estimated_total_commission),
+        });
       this.logger.log({
         event: 'reconciliation.batch.completed',
         batchId: id,
