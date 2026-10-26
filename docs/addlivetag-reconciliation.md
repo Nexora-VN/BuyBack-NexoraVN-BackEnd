@@ -20,9 +20,22 @@ The AddLiveTag portal labels `estimated_total_commission` as original commission
 Its final commission display subtracts the 0.98% Shopee service fee, so that
 display is not the comparison target for item-level commissions. In production,
 69 recent reports had item commissions exactly 1 VND above the API summary;
-108 other reports matched exactly. Accept only this observed +1 VND difference,
-record both totals and the difference in the completed batch summary, and warn
-in operations logs. Larger or reverse differences still fail reconciliation.
+108 other reports matched exactly. By operational policy, accept an absolute
+difference below 100 VND between the item sum and this original-commission
+summary, in either direction. Reject a difference of 100 VND or more. This
+limit is fixed in code and does not use an environment variable. Completed
+batches retain the item total, reported total, observed signed difference, and
+99 VND limit in their summary; nonzero differences emit an operations warning
+after the batch commits. Pagination completeness, distinct checkout count,
+source schema, and date-range checks are unaffected. Do not adjust any item or
+user cashback amount to force the totals to match.
+
+On 2026-10-26, a 26-item report summed to 145,027 VND against a 145,024 VND
+summary. The 3 VND difference is within this policy, but its cause has not been
+verified with AddLiveTag. The failed report includes a zero-commission
+cancellation for checkout 244274162284370. After deploying this change, resync
+the affected purchase date and verify the cancelled checkout and user's pending
+cashback; changing code alone does not update production data.
 
 The six-item regression fixture preserves financial and tracking fields from the
 user sample; product names are shortened and images omitted.
